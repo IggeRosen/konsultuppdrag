@@ -148,3 +148,25 @@ test("riktig struktur från /api/public/job-requests (id och title antagna)", ()
     description: "Kompetenser: anläggningsprojekt, Datasamordning",
   });
 });
+
+import { rateOf } from "../src/lib/sources/ework-parse.ts";
+
+test("kund: hoppar över client utan namn och tar nästa fält", () => {
+  const base = { id: 84303, title: "Informationssamordnare", startDate: "2026-10-21" };
+  assert.equal(mapVeramaJob({ ...base, client: { id: 12 }, company: { name: "Trafikverket" } })!.company, "Trafikverket");
+  assert.equal(mapVeramaJob({ ...base, client: null, legalEntityClient: { legalEntity: { name: "Region Skåne" } } })!.company, "Region Skåne");
+  assert.equal(mapVeramaJob({ ...base, client: "Scania" })!.company, "Scania");
+  assert.equal(mapVeramaJob({ ...base, client: { id: 1 } })!.company, undefined);
+});
+
+test("pris i olika format och omfattning", () => {
+  assert.equal(rateOf({ rate: 850 }), "850 kr/tim");
+  assert.equal(rateOf({ rate: { amount: 900, currency: "SEK" } }), "900 kr/tim");
+  assert.equal(rateOf({ rate: { min: 700, max: 900 } }), "700–900 kr/tim");
+  assert.equal(rateOf({ rate: { value: { amount: 95, currency: "EUR" } } }), "95 EUR/tim");
+  assert.equal(rateOf({ rate: null }), undefined);
+  assert.equal(rateOf({ rate: { amount: 0 } }), undefined);
+  const a = mapVeramaJob({ id: 1, title: "X", startDate: "2026-01-01", hoursPerWeek: 40, remoteness: 50 })!;
+  assert.equal(a.extent, "40 tim/vecka");
+  assert.equal(a.workMode, "Hybrid · 50 % distans");
+});

@@ -50,7 +50,17 @@ function nameOf(v: unknown): string | undefined {
   if (Array.isArray(v)) return v.map(nameOf).filter(Boolean).join(", ") || undefined;
   if (v && typeof v === "object") {
     const o = v as Obj;
-    return str(first(o, ["name", "displayName", "title", "city", "label"]));
+    const direct = str(first(o, ["name", "displayName", "legalName", "companyName", "title", "label"]));
+    if (direct) return direct;
+    // T.ex. { legalEntity: { name } } eller { company: { name } }
+    for (const k of ["legalEntity", "company", "organisation", "organization", "client"]) {
+      const inner = o[k];
+      if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+        const n = str(first(inner as Obj, ["name", "displayName", "legalName"]));
+        if (n) return n;
+      }
+    }
+    return undefined;
   }
   return str(v);
 }
@@ -85,13 +95,52 @@ function workModeOf(o: Obj): string | undefined {
   return mode;
 }
 
-function rateOf(o: Obj): string | undefined {
-  const max = first(o, ["maxRate", "rateMax", "hourlyRateMax", "priceMax"]);
-  const val = first(o, ["rate", "hourlyRate", "price"]) ?? max;
-  const amount = typeof val === "object" && val ? str(first(val as Obj, ["amount", "value", "max"])) : str(val);
-  if (!amount || !/^\d[\d\s.,]*$/.test(amount)) return undefined;
-  const currency = str(first(o, ["currency", "rateCurrency"])) ?? "SEK";
-  return /^(SEK|kr)$/i.test(currency) ? `${amount.replace(/\s/g, "")} kr/tim` : `${amount.replace(/\s/g, "")} ${currency}/tim`;
+/** Första nyckel som ger ett namn (hoppar över t.ex. objekt utan namnfält eller null). */
+function firstName(o: Obj, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const n = nameOf(o[k]);
+    if (n) return n;
+  }
+  return undefined;
+}
+
+function num(v: unknown): number | undefined {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v.replace(/\s/g, "").replace(",", ".")) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * Pris ur t.ex. `rate: 850`, `rate: { amount: 850, currency: "SEK" }`,
+ * `rate: { min: 700, max: 900 }` eller `rate: { value: { amount } }`.
+ */
+export function rateOf(o: Obj): string | undefined {
+  const raw = first(o, ["rate", "hourlyRate", "price", "maxRate", "rateMax"]);
+  let min: number | undefined;
+  let max: number | undefined;
+  let currency = str(first(o, ["currency", "rateCurrency"]));
+  let unit = "tim";
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const r = raw as Obj;
+    const inner = (r.value && typeof r.value === "object" ? r.value : r) as Obj;
+    max = num(first(inner, ["max", "maxAmount", "to", "amount", "value", "price", "hourlyRate"]));
+    min = num(first(inner, ["min", "minAmount", "from"]));
+    currency = str(first(inner, ["currency", "currencyCode"])) ?? str(first(r, ["currency", "currencyCode"])) ?? currency;
+    const per = str(first(r, ["unit", "type", "period", "rateType"]));
+    if (per && /month|månad/i.test(per)) unit = "mån";
+  } else {
+    max = num(raw);
+  }
+  if (!max && !min) return undefined;
+  const cur = !currency || /^(SEK|kr)$/i.test(currency) ? "kr" : currency.toUpperCase();
+  const amount = min && max && min !== max ? `${min}–${max}` : String(max ?? min);
+  return `${amount} ${cur}/${unit}`;
+}
+
+function extentOf(o: Obj): string | undefined {
+  const h = num(first(o, ["hoursPerWeek", "hours", "workload"]));
+  if (h) return `${h} tim/vecka`;
+  const pct = num(first(o, ["extent", "scope", "workloadPercentage"]));
+  return pct && pct <= 100 ? `${pct} %` : undefined;
 }
 
 /**
@@ -118,10 +167,11 @@ export function mapVeramaJob(o: Obj): Assignment | null {
     source: "Ework",
     title,
     url: veramaUrl(idStr),
-    company: nameOf(first(o, ["customer", "customerName", "client", "clientName", "company", "companyName", "organisation", "organization"])),
+    company: firstName(o, ["client", "legalEntityClient", "customer", "customerName", "clientName", "company", "companyName", "organisation", "organization"]),
     location: locationOf(o),
     workMode: workModeOf(o),
     rate: rateOf(o),
+    extent: extentOf(o),
     published: isoDate(first(o, ["firstDayOfApplications", "publishedAt", "published", "publishDate", "createdAt", "created"])),
     deadline: isoDate(first(o, ["lastDayOfApplications", "applicationDeadline", "deadline", "lastApplicationDate", "applyBefore"])),
     start: isoDate(first(o, ["startDate", "start", "assignmentStart"])),

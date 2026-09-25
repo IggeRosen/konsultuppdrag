@@ -37,6 +37,14 @@ export function apiCandidates(): string[] {
   ];
 }
 
+const RAW_KEYS = ["company", "client", "legalEntityClient", "promoteClient", "rate", "level", "hoursPerWeek", "remoteness", "status", "origin"];
+
+function pick(o: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of keys) if (k in o) out[k] = typeof o[k] === "string" ? String(o[k]).slice(0, 200) : o[k];
+  return out;
+}
+
 export interface ApiProbe {
   url: string;
   status: number | string;
@@ -47,6 +55,8 @@ export interface ApiProbe {
   /** Fältnamnen i första uppdragsobjektet och hur det tolkades – för att verifiera mappningen */
   firstKeys?: string[];
   firstItem?: Assignment;
+  /** Råvärden för fält vars format är okänt (kund, pris m.m.) */
+  firstRaw?: Record<string, unknown>;
 }
 
 async function fetchApiPage(url: string): Promise<{ status: number; items: Assignment[]; json: unknown; contentType?: string; bytes: number; body: string }> {
@@ -87,6 +97,7 @@ export async function probeEworkApi(): Promise<ApiProbe[]> {
           sample: r.body.slice(0, 600),
           firstKeys: firstObj ? Object.keys(firstObj) : undefined,
           firstItem: r.items[0],
+          firstRaw: firstObj ? pick(firstObj as Record<string, unknown>, RAW_KEYS) : undefined,
         };
       } catch (err) {
         return { url, status: err instanceof Error ? err.message : String(err), bytes: 0, items: 0 };
