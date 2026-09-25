@@ -5,12 +5,17 @@ export interface FetchResult {
   status: number;
   url: string;
   body: string;
+  headers: Record<string, string>;
 }
 
 /** Hämtar en sida som text med timeout. Next.js cachar svaret i `revalidate` sekunder. */
 export async function fetchText(
   url: string,
-  { timeoutMs = 8000, revalidate = 1800 }: { timeoutMs?: number; revalidate?: number } = {},
+  {
+    timeoutMs = 8000,
+    revalidate = 1800,
+    headers = {},
+  }: { timeoutMs?: number; revalidate?: number; headers?: Record<string, string> } = {},
 ): Promise<FetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -22,10 +27,15 @@ export async function fetchText(
         "User-Agent": USER_AGENT,
         Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
         "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
+        ...headers,
       },
       next: { revalidate },
     } as RequestInit);
-    return { status: res.status, url: res.url || url, body: await res.text() };
+    const resHeaders: Record<string, string> = {};
+    res.headers.forEach((v, k) => {
+      if (k !== "set-cookie") resHeaders[k] = v;
+    });
+    return { status: res.status, url: res.url || url, body: await res.text(), headers: resHeaders };
   } finally {
     clearTimeout(timer);
   }

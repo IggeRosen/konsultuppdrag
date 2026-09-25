@@ -63,6 +63,8 @@ header.top p { margin: 4px 0 0; color: var(--muted); }
 .src.ok::before, .src.err::before, .src.plan::before { content: "●"; margin-right: 6px; }
 .src.ok::before { color: var(--good); }
 .src.err::before { color: var(--bad); }
+button.src { cursor: pointer; font: inherit; color: inherit; }
+.src.off { opacity: .45; text-decoration: line-through; }
 .src.plan { color: var(--muted); }
 .src.plan::before { color: var(--border); }
 

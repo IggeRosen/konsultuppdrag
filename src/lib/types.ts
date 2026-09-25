@@ -9,6 +9,12 @@ export interface Assignment {
   published?: string;
   deadline?: string;
   start?: string;
+  /** Slutdatum för uppdraget */
+  end?: string;
+  /** Pris, t.ex. "676 kr/tim" */
+  rate?: string;
+  /** Arbetsform, t.ex. "Hybrid · 50 % distans" eller "På plats" */
+  workMode?: string;
   /** Start i klartext, t.ex. "Omgående" eller "Om 2 månader" */
   startText?: string;
   /** Uppdragslängd, t.ex. "12 månader" */

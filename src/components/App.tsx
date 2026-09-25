@@ -52,7 +52,9 @@ function Highlight({ text, words }: { text: string; words: string[] }) {
 function formatDate(d?: string) {
   if (!d) return null;
   const date = new Date(d);
-  return isNaN(date.getTime()) ? d : date.toLocaleDateString("sv-SE", { day: "numeric", month: "short" });
+  if (isNaN(date.getTime())) return d;
+  const otherYear = date.getFullYear() !== new Date().getFullYear();
+  return date.toLocaleDateString("sv-SE", { day: "numeric", month: "short", ...(otherYear ? { year: "numeric" } : {}) });
 }
 
 export default function App() {
@@ -65,6 +67,7 @@ export default function App() {
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<"relevance" | "newest">("relevance");
   const [view, setView] = useState<"all" | "new" | "saved">("all");
+  const [hiddenSources, setHiddenSources] = useState<string[]>([]);
   const [seen, setSeen] = useState<string[]>([]);
   const [saved, setSaved] = useState<string[]>([]);
   const [open, setOpen] = useState<string | null>(null);
@@ -146,6 +149,7 @@ export default function App() {
     if (!data) return [];
     const f = filter.trim().toLowerCase();
     let list = data.results.filter((r) => {
+      if (hiddenSources.includes(r.source)) return false;
       if (view === "saved" && !saved.includes(r.id)) return false;
       if (view === "new" && !isNew(r.id)) return false;
       if (!f) return true;
@@ -154,7 +158,7 @@ export default function App() {
     if (sort === "newest") list = [...list].sort((a, b) => (b.published ?? "").localeCompare(a.published ?? ""));
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, filter, sort, view, saved]);
+  }, [data, filter, sort, view, saved, hiddenSources]);
 
   const newCount = data ? data.results.filter((r) => isNew(r.id)).length : 0;
   const suggestions = SUGGESTIONS.filter((s) => !keywords.some((k) => k.toLowerCase() === s.toLowerCase())).slice(0, 6);
@@ -241,9 +245,17 @@ export default function App() {
       {data && (
         <div className="sources" aria-label="Källor">
           {data.sources.map((s) => (
-            <span key={s.source} className={`src ${s.ok ? "ok" : "err"}`} title={s.error ?? s.strategies.join(" · ")}>
+            <button
+              key={s.source}
+              className={`src ${s.ok ? "ok" : "err"}${hiddenSources.includes(s.source) ? " off" : ""}`}
+              title={`${s.error ?? s.strategies.join(" · ")}\nKlicka för att visa/dölja`}
+              aria-pressed={!hiddenSources.includes(s.source)}
+              onClick={() =>
+                setHiddenSources((prev) => (prev.includes(s.source) ? prev.filter((x) => x !== s.source) : [...prev, s.source]))
+              }
+            >
               {s.source} · {s.ok ? `${s.count} uppdrag` : "ej tillgänglig"}
-            </span>
+            </button>
           ))}
           {data.plannedSources.map((s) => (
             <span key={s} className="src plan" title="Kommer snart">
@@ -288,7 +300,15 @@ export default function App() {
                   {a.location && <span>📍 {a.location}</span>}
                   {a.published && <span>Publicerad {formatDate(a.published)}</span>}
                   {a.deadline && <span>Sista dag {formatDate(a.deadline)}</span>}
-                  {a.startText ? <span>Start {a.startText}</span> : a.start && <span>Start {formatDate(a.start)}</span>}
+                  {a.startText ? (
+                    <span>Start {a.startText}</span>
+                  ) : a.start && a.end ? (
+                    <span>📅 {formatDate(a.start)} – {formatDate(a.end)}</span>
+                  ) : (
+                    a.start && <span>Start {formatDate(a.start)}</span>
+                  )}
+                  {a.workMode && <span>{a.workMode}</span>}
+                  {a.rate && <span>💰 {a.rate}</span>}
                   {a.duration && <span>⏱ {a.duration}</span>}
                   {a.extent && <span>{a.extent}</span>}
                 </div>

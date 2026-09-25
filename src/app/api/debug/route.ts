@@ -1,15 +1,30 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import { fetchText } from "@/lib/http";
-import { extractRequisitionId, findNextPageUrl, parseListing } from "@/lib/sources/brainville-parse";
+import { extractRequisitionId, parseListing } from "@/lib/sources/brainville-parse";
+import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/sources/cinode-parse";
+import { extractNextCursor } from "@/lib/sources/cinode-parse";
+import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
+import { findNextPage } from "@/lib/parse-utils";
+
+// Tillåtna sajter och vilken tolkning som används för dem.
+const SITES = [
+  { host: "brainville.com", parse: parseListing, extractId: extractRequisitionId },
+  { host: "cinode.market", parse: parseCinodeListing, extractId: extractCinodeId },
+  { host: "cinode.com", parse: parseCinodeListing, extractId: extractCinodeId },
+];
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * Felsökning: /api/debug?url=https://www.brainville.com/PublicPage/RequisitionSearch
- * Visar vad scrapern ser på en sida. Endast brainville.com tillåts.
+ *             /api/debug?url=https://cinode.market/requests
+ * Visar vad scrapern ser på en sida. Endast Brainville och Cinode tillåts.
  * Lägg till &full=1 för att få med hela HTML:en.
+ * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
+ * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
+ * utdrag runt ord som "cursor", "fetch" och "load-more".
  */
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
@@ -20,18 +35,39 @@ export async function GET(req: Request) {
   } catch {
     return NextResponse.json({ error: "Ogiltig URL" }, { status: 400 });
   }
-  if (u.protocol !== "https:" || !(u.hostname === "brainville.com" || u.hostname.endsWith(".brainville.com"))) {
-    return NextResponse.json({ error: "Endast https://*.brainville.com tillåts" }, { status: 400 });
+  const site = SITES.find((s) => u.hostname === s.host || u.hostname.endsWith(`.${s.host}`));
+  if (u.protocol !== "https:" || !site) {
+    return NextResponse.json({ error: `Endast https-adresser på ${SITES.map((s) => s.host).join(", ")} tillåts` }, { status: 400 });
   }
   try {
     const res = await fetchText(u.toString(), { revalidate: 0 });
-    const items = parseListing(res.body, res.url);
+
+    if (/\.m?js(\?|$)/.test(u.pathname + u.search) || /^\s*(?:!function|\(function|"use strict"|var |const |let |import )/.test(res.body)) {
+      const hints: string[] = [];
+      const re = /cursor|load-?more|fetch\(|ajax|XMLHttpRequest|\/market\/[\w\/-]+|axios/gi;
+      let m: RegExpExecArray | null;
+      let lastEnd = -1;
+      while ((m = re.exec(res.body)) && hints.length < 40) {
+        if (m.index < lastEnd) continue;
+        const from = Math.max(0, m.index - 200);
+        lastEnd = Math.min(res.body.length, m.index + 250);
+        hints.push(res.body.slice(from, lastEnd));
+      }
+      return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: res.body.length, jsHints: hints });
+    }
+    const items = site.parse(res.body, res.url);
     const $ = cheerio.load(res.body);
 
     // HTML för första uppdragskortet och dess förälder – visar listans struktur.
     const firstLink = $("a[href]")
       .toArray()
-      .find((el) => extractRequisitionId($(el).attr("href") ?? ""));
+      .find((el) => {
+        try {
+          return site.extractId(new URL($(el).attr("href") ?? "", res.url).toString());
+        } catch {
+          return false;
+        }
+      });
     let listSnippet = "";
     if (firstLink) {
       let node = $(firstLink);
@@ -68,16 +104,26 @@ export async function GET(req: Request) {
 
     const urlsInScripts = [
       ...new Set(
-        [...res.body.matchAll(/["'`](\/(?:api|Market|PublicPage|PublicProfile|Requisition)[^"'`\s]{2,120})["'`]/gi)].map((m) => m[1]),
+        [...res.body.matchAll(/["'`](\/(?:api|Market|PublicPage|PublicProfile|Requisition|requests)[^"'`\s]{2,120})["'`]/gi)].map((m) => m[1]),
       ),
     ].slice(0, 60);
 
+    const cursor = site.host === "brainville.com" ? null : extractNextCursor(res.body, res.headers);
+    const loadMoreProbe =
+      cursor && params.get("probe") === "1"
+        ? await probeLoadMore(res.url, cursor, new Set(items.map((a) => a.id)))
+        : undefined;
+
     return NextResponse.json({
       status: res.status,
+      cursor,
+      loadMoreProbe,
       finalUrl: res.url,
       bytes: res.body.length,
       parsedCount: items.length,
-      nextPage: findNextPageUrl(res.body, res.url),
+      nextPage: findNextPage(res.body, res.url, site.host),
+      // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
+      detail: site.host !== "brainville.com" && extractCinodeId(res.url) ? parseCinodeDetail(res.body) : undefined,
       sample: items.slice(0, 5),
       paginationHints,
       forms,
