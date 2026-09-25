@@ -6,12 +6,16 @@ import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/so
 import { extractNextCursor } from "@/lib/sources/cinode-parse";
 import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
 import { findNextPage } from "@/lib/parse-utils";
+import { extractVeramaId, parseVeramaDetail, parseVeramaHtml } from "@/lib/sources/ework-parse";
+import { probeEworkApi } from "@/lib/sources/ework";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
   { host: "brainville.com", parse: parseListing, extractId: extractRequisitionId },
   { host: "cinode.market", parse: parseCinodeListing, extractId: extractCinodeId },
   { host: "cinode.com", parse: parseCinodeListing, extractId: extractCinodeId },
+  { host: "verama.com", parse: parseVeramaHtml, extractId: extractVeramaId },
+  { host: "eworkgroup.com", parse: parseVeramaHtml, extractId: extractVeramaId },
 ];
 
 export const runtime = "nodejs";
@@ -20,9 +24,11 @@ export const dynamic = "force-dynamic";
 /**
  * Felsökning: /api/debug?url=https://www.brainville.com/PublicPage/RequisitionSearch
  *             /api/debug?url=https://cinode.market/requests
- * Visar vad scrapern ser på en sida. Endast Brainville och Cinode tillåts.
+ *             /api/debug?url=https://app.verama.com/sv/job-requests&probe=1
+ * Visar vad scrapern ser på en sida. Endast Brainville, Cinode och Ework/Verama tillåts.
  * Lägg till &full=1 för att få med hela HTML:en.
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
+ * Verama: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
  * utdrag runt ord som "cursor", "fetch" och "load-more".
  */
@@ -44,7 +50,7 @@ export async function GET(req: Request) {
 
     if (/\.m?js(\?|$)/.test(u.pathname + u.search) || /^\s*(?:!function|\(function|"use strict"|var |const |let |import )/.test(res.body)) {
       const hints: string[] = [];
-      const re = /cursor|load-?more|fetch\(|ajax|XMLHttpRequest|\/market\/[\w\/-]+|axios/gi;
+      const re = /cursor|load-?more|fetch\(|ajax|XMLHttpRequest|\/market\/[\w\/-]+|\/api\/[\w\/{}$.-]+|job-requests|axios/gi;
       let m: RegExpExecArray | null;
       let lastEnd = -1;
       while ((m = re.exec(res.body)) && hints.length < 40) {
@@ -108,7 +114,9 @@ export async function GET(req: Request) {
       ),
     ].slice(0, 60);
 
-    const cursor = site.host === "brainville.com" ? null : extractNextCursor(res.body, res.headers);
+    const isVerama = site.host === "verama.com" || site.host === "eworkgroup.com";
+    const cursor = site.host === "brainville.com" || isVerama ? null : extractNextCursor(res.body, res.headers);
+    const apiProbe = isVerama && params.get("probe") === "1" ? await probeEworkApi() : undefined;
     const loadMoreProbe =
       cursor && params.get("probe") === "1"
         ? await probeLoadMore(res.url, cursor, new Set(items.map((a) => a.id)))
@@ -118,12 +126,19 @@ export async function GET(req: Request) {
       status: res.status,
       cursor,
       loadMoreProbe,
+      apiProbe,
       finalUrl: res.url,
       bytes: res.body.length,
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: site.host !== "brainville.com" && extractCinodeId(res.url) ? parseCinodeDetail(res.body) : undefined,
+      detail: isVerama
+        ? extractVeramaId(res.url)
+          ? parseVeramaDetail(res.body)
+          : undefined
+        : site.host !== "brainville.com" && extractCinodeId(res.url)
+          ? parseCinodeDetail(res.body)
+          : undefined,
       sample: items.slice(0, 5),
       paginationHints,
       forms,

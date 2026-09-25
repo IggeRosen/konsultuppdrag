@@ -1,14 +1,13 @@
 import type { Assignment, SourceAdapter } from "../types.ts";
 import { fetchText, mapLimit } from "../http.ts";
 import { scrapeCinodeListing } from "./cinode-loadmore.ts";
+import { idsFromSitemaps } from "../sitemap.ts";
 import {
   CINODE_BASE,
   cinodeUrl,
   extractCinodeId,
   parseCinodeDetail,
   parseCinodeListing,
-  parseSitemap,
-  sitemapsFromRobots,
 } from "./cinode-parse.ts";
 
 // Cinode Market är öppen för alla utan inloggning (cinode.market → cinode.com/market).
@@ -16,39 +15,6 @@ const MAX_PAGES = Number(process.env.CINODE_MAX_PAGES ?? 10);
 // Hur många av de senaste uppdragen från sitemapen vi läser in.
 const MAX_FROM_SITEMAP = Number(process.env.CINODE_MAX_SITEMAP ?? 80);
 const MAX_DETAIL_FETCHES = Number(process.env.CINODE_MAX_DETAILS ?? 80);
-
-/** Samlar uppdrags-id:n från sitemap(s). Följer sitemap-index ett steg. */
-async function idsFromSitemaps(errors: string[]): Promise<string[]> {
-  const roots = new Set([`${CINODE_BASE}/sitemap.xml`]);
-  try {
-    const robots = await fetchText(`${CINODE_BASE}/robots.txt`, { revalidate: 24 * 3600 });
-    if (robots.status < 400) sitemapsFromRobots(robots.body).forEach((s) => roots.add(s));
-  } catch {
-    /* robots.txt är frivillig */
-  }
-
-  const ids = new Set<string>();
-  const visit = async (url: string, depth: number) => {
-    try {
-      const res = await fetchText(url, { revalidate: 3600 });
-      if (res.status >= 400) return;
-      const { urls, sitemaps } = parseSitemap(res.body);
-      for (const u of urls) {
-        const id = extractCinodeId(u);
-        if (id) ids.add(id);
-      }
-      if (depth < 1) {
-        // Prioritera under-sitemaps som ser ut att handla om uppdrag.
-        const children = sitemaps.sort((a, b) => Number(/request/i.test(b)) - Number(/request/i.test(a))).slice(0, 10);
-        await Promise.all(children.map((c) => visit(c, depth + 1)));
-      }
-    } catch (err) {
-      errors.push(`sitemap ${new URL(url).pathname}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
-  await Promise.all([...roots].map((r) => visit(r, 0)));
-  return [...ids];
-}
 
 export const cinode: SourceAdapter = {
   name: "Cinode",
@@ -70,7 +36,7 @@ export const cinode: SourceAdapter = {
     }
 
     // 2) Sitemap: de nyaste uppdragen (högst id) som listan inte redan gav.
-    const sitemapIds = (await idsFromSitemaps(errors))
+    const sitemapIds = (await idsFromSitemaps(CINODE_BASE, extractCinodeId, { errors, prefer: /request/i }))
       .filter((id) => !byId.has(`cinode:${id}`))
       .sort((a, b) => Number(b) - Number(a))
       .slice(0, MAX_FROM_SITEMAP);
