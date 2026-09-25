@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import * as cheerio from "cheerio";
 import { fetchText } from "@/lib/http";
-import { parseListing } from "@/lib/sources/brainville-parse";
+import { extractRequisitionId, findNextPageUrl, parseListing } from "@/lib/sources/brainville-parse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,9 +9,11 @@ export const dynamic = "force-dynamic";
 /**
  * Felsökning: /api/debug?url=https://www.brainville.com/PublicPage/RequisitionSearch
  * Visar vad scrapern ser på en sida. Endast brainville.com tillåts.
+ * Lägg till &full=1 för att få med hela HTML:en.
  */
 export async function GET(req: Request) {
-  const target = new URL(req.url).searchParams.get("url") ?? "https://www.brainville.com/PublicPage/RequisitionSearch?lang=sv";
+  const params = new URL(req.url).searchParams;
+  const target = params.get("url") ?? "https://www.brainville.com/PublicPage/RequisitionSearch?lang=sv";
   let u: URL;
   try {
     u = new URL(target);
@@ -23,17 +26,65 @@ export async function GET(req: Request) {
   try {
     const res = await fetchText(u.toString(), { revalidate: 0 });
     const items = parseListing(res.body, res.url);
-    const scripts = [...res.body.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]);
-    const xhrHints = [...new Set([...res.body.matchAll(/["'](\/[A-Za-z]+\/[A-Za-z/]*(?:Search|Requisition|Assignment)[A-Za-z/]*)["']/g)].map((m) => m[1]))];
+    const $ = cheerio.load(res.body);
+
+    // HTML för första uppdragskortet och dess förälder – visar listans struktur.
+    const firstLink = $("a[href]")
+      .toArray()
+      .find((el) => extractRequisitionId($(el).attr("href") ?? ""));
+    let listSnippet = "";
+    if (firstLink) {
+      let node = $(firstLink);
+      for (let i = 0; i < 4 && node.parent().length; i++) node = node.parent();
+      listSnippet = ($.html(node) ?? "").replace(/\s+/g, " ").slice(0, 6000);
+    }
+
+    // Allt som ser ut som paginering eller "visa fler".
+    const paginationHints = $("a, button, li, [data-page], [onclick]")
+      .toArray()
+      .map((el) => {
+        const e = $(el);
+        const text = e.text().replace(/\s+/g, " ").trim();
+        const attrs = Object.entries((el as unknown as { attribs?: Record<string, string> }).attribs ?? {})
+          .filter(([k]) => /href|onclick|data-|class|id|rel|aria/.test(k))
+          .map(([k, v]) => `${k}="${v.slice(0, 200)}"`)
+          .join(" ");
+        return { tag: (el as unknown as { name: string }).name, text: text.slice(0, 40), attrs };
+      })
+      .filter((h) => /pag|page|sida|next|nästa|more|fler|load/i.test(h.attrs) || /^(\d{1,3}|›|»|nästa|next|visa fler|show more|load more)$/i.test(h.text))
+      .slice(0, 40);
+
+    const forms = $("form")
+      .toArray()
+      .map((f) => ({
+        action: $(f).attr("action"),
+        method: $(f).attr("method"),
+        inputs: $(f)
+          .find("input, select")
+          .toArray()
+          .map((i) => `${$(i).attr("name") ?? "?"}=${($(i).attr("value") ?? "").slice(0, 40)}`)
+          .slice(0, 40),
+      }));
+
+    const urlsInScripts = [
+      ...new Set(
+        [...res.body.matchAll(/["'`](\/(?:api|Market|PublicPage|PublicProfile|Requisition)[^"'`\s]{2,120})["'`]/gi)].map((m) => m[1]),
+      ),
+    ].slice(0, 60);
+
     return NextResponse.json({
       status: res.status,
       finalUrl: res.url,
       bytes: res.body.length,
       parsedCount: items.length,
+      nextPage: findNextPageUrl(res.body, res.url),
       sample: items.slice(0, 5),
-      scripts,
-      xhrHints,
-      htmlHead: res.body.slice(0, 3000),
+      paginationHints,
+      forms,
+      urlsInScripts,
+      scripts: [...res.body.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]),
+      listSnippet,
+      ...(params.get("full") === "1" ? { html: res.body } : {}),
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 });

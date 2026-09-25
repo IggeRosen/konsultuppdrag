@@ -288,7 +288,9 @@ export default function App() {
                   {a.location && <span>📍 {a.location}</span>}
                   {a.published && <span>Publicerad {formatDate(a.published)}</span>}
                   {a.deadline && <span>Sista dag {formatDate(a.deadline)}</span>}
-                  {a.start && <span>Start {formatDate(a.start)}</span>}
+                  {a.startText ? <span>Start {a.startText}</span> : a.start && <span>Start {formatDate(a.start)}</span>}
+                  {a.duration && <span>⏱ {a.duration}</span>}
+                  {a.extent && <span>{a.extent}</span>}
                 </div>
               </div>
               <div className="card-actions">

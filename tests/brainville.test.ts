@@ -59,3 +59,13 @@ test("parseDetail hämtar titel, företag och beskrivning", () => {
   assert.match(d.description!, /Kubernetes/);
   assert.equal(d.start, "2026-11-01");
 });
+
+test("findNextPageUrl hittar nästa sida men inte ankarlänkar", async () => {
+  const { findNextPageUrl } = await import("../src/lib/sources/brainville-parse.ts");
+  const base = "https://www.brainville.com/PublicPage/RequisitionSearch";
+  assert.equal(
+    findNextPageUrl(`<ul class="pagination"><li><a href="#">1</a></li><li><a href="?page=2">Nästa</a></li></ul>`, base),
+    "https://www.brainville.com/PublicPage/RequisitionSearch?page=2",
+  );
+  assert.equal(findNextPageUrl(`<a href="#">Next</a><a href="javascript:void(0)">›</a>`, base), null);
+});

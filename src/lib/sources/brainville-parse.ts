@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import type { Assignment } from "../types.ts";
+import { parseSummary } from "./brainville-summary.ts";
 
 export const BRAINVILLE_BASE = "https://www.brainville.com";
 
@@ -96,6 +97,9 @@ export function parseListing(html: string, pageUrl = BRAINVILLE_BASE): Assignmen
     const location = clean(card.find("[class*=location],[class*=Location],[class*=city],[class*=City]").first().text());
     const dates = [...cardText.matchAll(DATE_RE)].map((m) => m[1]);
 
+    const rest = (title && cardText.startsWith(title) ? cardText.slice(title.length).trim() : cardText).slice(0, 600);
+    const summary = parseSummary(rest);
+
     const existing = byId.get(id);
     const candidate: Assignment = {
       id: `brainville:${id}`,
@@ -103,15 +107,18 @@ export function parseListing(html: string, pageUrl = BRAINVILLE_BASE): Assignmen
       title: title || `Uppdrag ${id}`,
       url: canonicalUrl(id, new URL(href, pageUrl).toString()),
       company: company || undefined,
-      location: location || undefined,
-      published: dates[0],
+      location: location || summary?.location || undefined,
+      published: dates[0] ?? summary?.published,
       deadline: dates.length > 1 ? dates[dates.length - 1] : undefined,
-      description: (title && cardText.startsWith(title) ? cardText.slice(title.length).trim() : cardText).slice(0, 600) || undefined,
+      startText: summary?.startText,
+      duration: summary?.duration,
+      extent: summary?.extent,
+      // Är texten bara sammanfattningsraden har vi redan brutit ut allt ur den.
+      description: summary ? undefined : rest || undefined,
     };
-    // Behåll den rikaste varianten om samma uppdrag länkas flera gånger.
-    if (!existing || (candidate.description?.length ?? 0) > (existing.description?.length ?? 0)) {
-      byId.set(id, { ...existing, ...stripEmpty(candidate) } as Assignment);
-    }
+    // Länkas samma uppdrag flera gånger fyller senare träffar bara i saknade fält.
+    if (!existing) byId.set(id, stripEmpty(candidate) as Assignment);
+    else byId.set(id, { ...stripEmpty(candidate), ...stripEmpty(existing) } as Assignment);
   });
 
   for (const item of extractJsonAssignments($)) {
@@ -259,4 +266,25 @@ export function parseDetail(html: string): Partial<Assignment> {
     description: description || undefined,
     start: dates[0],
   });
+}
+
+/** Letar efter en länk till nästa resultatsida (rel=next, "Nästa", "Next", "›", "»"). */
+export function findNextPageUrl(html: string, pageUrl: string): string | null {
+  const $ = cheerio.load(html);
+  const candidates = $('a[rel="next"], link[rel="next"]').toArray().concat(
+    $("a[href]")
+      .toArray()
+      .filter((el) => /^(nästa|next|›|»|>|visa fler|show more|load more)$/i.test(clean($(el).text()) || clean($(el).attr("aria-label")))),
+  );
+  for (const el of candidates) {
+    const href = $(el).attr("href");
+    if (!href || href.startsWith("#") || href.startsWith("javascript:")) continue;
+    try {
+      const u = new URL(href, pageUrl);
+      if (u.hostname.endsWith("brainville.com") && u.toString() !== pageUrl) return u.toString();
+    } catch {
+      /* ignorera */
+    }
+  }
+  return null;
 }

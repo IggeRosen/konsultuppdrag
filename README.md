@@ -30,7 +30,10 @@ src/components/App.tsx               UI
 Brainvilles API listar bara uppdrag som det egna företaget publicerat, så appen
 läser de publika sidorna:
 
-1. Söksidan `/PublicPage/RequisitionSearch`
+1. Söksidan `/PublicPage/RequisitionSearch`, med paginering: en "nästa"-länk följs
+   om den finns, annars provas vanliga sidparametrar (`page`, `p` …). Max `BRAINVILLE_MAX_PAGES` (10) sidor.
+   Sammanfattningsraden ("Finspång Start immediately about 12 months 1 d") delas upp i
+   ort, start, längd, omfattning och publiceringsdatum.
 2. Förmedlares "Öppna uppdrag"-sidor `/PublicProfile/Requisitions?id=<företag>`
    (Ework, KeyMan, Randstad m.fl. – ändra med `BRAINVILLE_COMPANY_IDS=648,7820,...`)
 3. Detaljsidor för varje uppdrag (för beskrivningstext), max `BRAINVILLE_MAX_DETAILS` (60)
@@ -55,8 +58,10 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_DETAILS`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida
-ser ut från Vercel och om scrapern hittar uppdrag (`parsedCount`).
+ser ut från Vercel och om scrapern hittar uppdrag (`parsedCount`). Svaret visar också
+`nextPage`, `paginationHints`, `forms` och `listSnippet` (listans HTML). Lägg till
+`&full=1` för hela sidans HTML.
