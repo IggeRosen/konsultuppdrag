@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville** och **Cinode Market**.
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market** och **Ework** (via Verama).
 
 ## Funktioner
 
@@ -19,6 +19,9 @@ src/lib/sources/brainville.ts        hämtning (sök-sidor + företagssidor + de
 src/lib/sources/brainville-parse.ts  ren HTML-tolkning (testbar)
 src/lib/sources/cinode.ts            Cinode Market (listsida + sitemap + detaljsidor)
 src/lib/sources/cinode-loadmore.ts   "Load more"-paginering för Cinode
+src/lib/sources/ework.ts             Ework/Verama (JSON-API + listsida + sitemap + detaljsidor)
+src/lib/sources/ework-parse.ts       tolkning av Veramas JSON och HTML
+src/lib/sitemap.ts                   delad sitemap-läsning
 src/lib/sources/cinode-parse.ts      ren HTML-tolkning för Cinode
 src/lib/parse-utils.ts               delade tolkningshjälpare (kort, JSON, JSON-LD, nästa sida)
 src/lib/paging.ts                    delad paginering
@@ -26,7 +29,7 @@ src/lib/sources/index.ts             register över källor – lägg till nya p
 src/lib/aggregate.ts                 kör alla källor parallellt, cache 15 min
 src/lib/match.ts                     nyckelordsmatchning och poängsättning
 src/app/api/assignments/route.ts     GET /api/assignments?keywords=java,react&mode=any|all
-src/app/api/debug/route.ts           GET /api/debug?url=<brainville- eller cinode-url> – visar vad scrapern ser
+src/app/api/debug/route.ts           GET /api/debug?url=<brainville-, cinode- eller verama-url> – visar vad scrapern ser
 src/components/App.tsx               UI
 ```
 
@@ -63,6 +66,21 @@ och `/PublicProfile/Requisition?...&id=<id>`. Inbäddad JSON i `<script>` tolkas
 
 Uppdrag vars sista svarsdag har passerat filtreras bort.
 
+### Ework
+
+Ework publicerar sina uppdrag på [Verama](https://app.verama.com/sv/job-requests), en
+JavaScript-app som hämtar listan från ett JSON-API. Appen läser:
+
+1. JSON-API:t: tänkbara adresser provas och den som svarar med uppdrag används, med
+   paginering (`page`, `totalPages`/`last`), max `EWORK_MAX_PAGES` = 6. Är adressen känd
+   kan den sättas med `EWORK_API_URL`, t.ex. `https://app.verama.com/api/public/job-requests?page={page}&size=50`.
+   Se vilka som svarar med `/api/debug?url=https://app.verama.com/sv/job-requests&probe=1`.
+2. Listsidan `app.verama.com/sv/job-requests` (länkar och inbäddad JSON om den är serverrenderad)
+3. Sitemapen: de nyaste uppdragen, max `EWORK_MAX_SITEMAP` = 60
+4. Detaljsidor `app.verama.com/sv/job-requests/<id>` (titel och beskrivning ur meta), max `EWORK_MAX_DETAILS` = 60
+
+Uppdrag vars sista ansökningsdag har passerat filtreras bort.
+
 ### Lägga till en ny portal
 
 Skapa `src/lib/sources/<portal>.ts` som exporterar en `SourceAdapter`
@@ -80,7 +98,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida

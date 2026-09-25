@@ -268,19 +268,4 @@ export function parseCinodeDetail(html: string): Partial<Assignment> {
   });
 }
 
-/** Plockar ut alla <loc> ur en sitemap (eller sitemap-index). */
-export function parseSitemap(xml: string): { urls: string[]; sitemaps: string[] } {
-  const $ = cheerio.load(xml, { xml: true });
-  const sitemaps = $("sitemapindex > sitemap > loc")
-    .toArray()
-    .map((el) => clean($(el).text()));
-  const urls = $("urlset > url > loc")
-    .toArray()
-    .map((el) => clean($(el).text()));
-  return { urls, sitemaps };
-}
-
-/** Hittar "Sitemap:"-rader i robots.txt. */
-export function sitemapsFromRobots(robots: string): string[] {
-  return [...robots.matchAll(/^\s*sitemap:\s*(\S+)/gim)].map((m) => m[1]);
-}
+export { parseSitemap, sitemapsFromRobots } from "../sitemap.ts";
