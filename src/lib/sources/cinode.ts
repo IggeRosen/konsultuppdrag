@@ -1,6 +1,6 @@
 import type { Assignment, SourceAdapter } from "../types.ts";
 import { fetchText, mapLimit } from "../http.ts";
-import { scrapePaged } from "../paging.ts";
+import { scrapeCinodeListing } from "./cinode-loadmore.ts";
 import {
   CINODE_BASE,
   cinodeUrl,
@@ -11,8 +11,7 @@ import {
   sitemapsFromRobots,
 } from "./cinode-parse.ts";
 
-// Cinode Market är öppen för alla utan inloggning.
-const LISTING_PAGES = [`${CINODE_BASE}/requests`, "https://cinode.com/market/requests"];
+// Cinode Market är öppen för alla utan inloggning (cinode.market → cinode.com/market).
 const MAX_PAGES = Number(process.env.CINODE_MAX_PAGES ?? 10);
 // Hur många av de senaste uppdragen från sitemapen vi läser in.
 const MAX_FROM_SITEMAP = Number(process.env.CINODE_MAX_SITEMAP ?? 80);
@@ -63,14 +62,11 @@ export const cinode: SourceAdapter = {
       for (const it of items) byId.set(it.id, { ...byId.get(it.id), ...it });
     };
 
-    // 1) Listsidorna (med paginering).
-    for (const url of LISTING_PAGES) {
-      const res = await scrapePaged(url, parseCinodeListing, { hostSuffix: "cinode.market", maxPages: MAX_PAGES, errors });
-      if (res.items.length) {
-        add(res.items);
-        strategies.push(`${new URL(url).host}${new URL(url).pathname} (${res.pages} sid${res.via ? `, ${res.via}` : ""}): ${res.items.length}`);
-        break; // Båda adresserna visar samma lista – en räcker.
-      }
+    // 1) Listsidan, med "Load more"-paginering.
+    const listing = await scrapeCinodeListing(MAX_PAGES, errors);
+    if (listing.items.length) {
+      add(listing.items);
+      strategies.push(`listsidan (${listing.pages} sid${listing.via ? `, ${listing.via}` : ""}): ${listing.items.length}`);
     }
 
     // 2) Sitemap: de nyaste uppdragen (högst id) som listan inte redan gav.

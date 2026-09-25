@@ -10,7 +10,11 @@ export interface FetchResult {
 /** Hämtar en sida som text med timeout. Next.js cachar svaret i `revalidate` sekunder. */
 export async function fetchText(
   url: string,
-  { timeoutMs = 8000, revalidate = 1800 }: { timeoutMs?: number; revalidate?: number } = {},
+  {
+    timeoutMs = 8000,
+    revalidate = 1800,
+    headers = {},
+  }: { timeoutMs?: number; revalidate?: number; headers?: Record<string, string> } = {},
 ): Promise<FetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -22,6 +26,7 @@ export async function fetchText(
         "User-Agent": USER_AGENT,
         Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
         "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
+        ...headers,
       },
       next: { revalidate },
     } as RequestInit);

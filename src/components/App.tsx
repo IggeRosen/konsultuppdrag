@@ -52,7 +52,9 @@ function Highlight({ text, words }: { text: string; words: string[] }) {
 function formatDate(d?: string) {
   if (!d) return null;
   const date = new Date(d);
-  return isNaN(date.getTime()) ? d : date.toLocaleDateString("sv-SE", { day: "numeric", month: "short" });
+  if (isNaN(date.getTime())) return d;
+  const otherYear = date.getFullYear() !== new Date().getFullYear();
+  return date.toLocaleDateString("sv-SE", { day: "numeric", month: "short", ...(otherYear ? { year: "numeric" } : {}) });
 }
 
 export default function App() {
@@ -298,7 +300,14 @@ export default function App() {
                   {a.location && <span>📍 {a.location}</span>}
                   {a.published && <span>Publicerad {formatDate(a.published)}</span>}
                   {a.deadline && <span>Sista dag {formatDate(a.deadline)}</span>}
-                  {a.startText ? <span>Start {a.startText}</span> : a.start && <span>Start {formatDate(a.start)}</span>}
+                  {a.startText ? (
+                    <span>Start {a.startText}</span>
+                  ) : a.start && a.end ? (
+                    <span>📅 {formatDate(a.start)} – {formatDate(a.end)}</span>
+                  ) : (
+                    a.start && <span>Start {formatDate(a.start)}</span>
+                  )}
+                  {a.workMode && <span>{a.workMode}</span>}
                   {a.duration && <span>⏱ {a.duration}</span>}
                   {a.extent && <span>{a.extent}</span>}
                 </div>

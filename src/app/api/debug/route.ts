@@ -3,6 +3,8 @@ import * as cheerio from "cheerio";
 import { fetchText } from "@/lib/http";
 import { extractRequisitionId, parseListing } from "@/lib/sources/brainville-parse";
 import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/sources/cinode-parse";
+import { extractNextCursor } from "@/lib/sources/cinode-parse";
+import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
 import { findNextPage } from "@/lib/parse-utils";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
@@ -20,6 +22,9 @@ export const dynamic = "force-dynamic";
  *             /api/debug?url=https://cinode.market/requests
  * Visar vad scrapern ser på en sida. Endast Brainville och Cinode tillåts.
  * Lägg till &full=1 för att få med hela HTML:en.
+ * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
+ * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
+ * utdrag runt ord som "cursor", "fetch" och "load-more".
  */
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
@@ -36,6 +41,20 @@ export async function GET(req: Request) {
   }
   try {
     const res = await fetchText(u.toString(), { revalidate: 0 });
+
+    if (/\.m?js(\?|$)/.test(u.pathname + u.search) || /^\s*(?:!function|\(function|"use strict"|var |const |let |import )/.test(res.body)) {
+      const hints: string[] = [];
+      const re = /cursor|load-?more|fetch\(|ajax|XMLHttpRequest|\/market\/[\w\/-]+|axios/gi;
+      let m: RegExpExecArray | null;
+      let lastEnd = -1;
+      while ((m = re.exec(res.body)) && hints.length < 40) {
+        if (m.index < lastEnd) continue;
+        const from = Math.max(0, m.index - 200);
+        lastEnd = Math.min(res.body.length, m.index + 250);
+        hints.push(res.body.slice(from, lastEnd));
+      }
+      return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: res.body.length, jsHints: hints });
+    }
     const items = site.parse(res.body, res.url);
     const $ = cheerio.load(res.body);
 
@@ -89,8 +108,16 @@ export async function GET(req: Request) {
       ),
     ].slice(0, 60);
 
+    const cursor = site.host === "brainville.com" ? null : extractNextCursor(res.body);
+    const loadMoreProbe =
+      cursor && params.get("probe") === "1"
+        ? (await probeLoadMore(res.url, cursor, new Set(items.map((a) => a.id)))).results
+        : undefined;
+
     return NextResponse.json({
       status: res.status,
+      cursor,
+      loadMoreProbe,
       finalUrl: res.url,
       bytes: res.body.length,
       parsedCount: items.length,

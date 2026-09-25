@@ -90,3 +90,66 @@ test("sitemap och robots.txt", () => {
   assert.deepEqual(parseSitemap(set).urls, ["https://cinode.market/requests/19615", "https://cinode.market/about"]);
   assert.deepEqual(sitemapsFromRobots("User-agent: *\nSitemap: https://cinode.market/sitemap.xml\n"), ["https://cinode.market/sitemap.xml"]);
 });
+
+import { readFileSync } from "node:fs";
+import { extractNextCursor, parseCinodeDate, parseLoadMoreResponse } from "../src/lib/sources/cinode-parse.ts";
+
+const realList = readFileSync(new URL("./fixtures/cinode-list.html", import.meta.url), "utf8");
+
+test("datum i Cinodes format", () => {
+  assert.equal(parseCinodeDate("25 Sep, 2026"), "2026-09-25");
+  assert.equal(parseCinodeDate("1 Oct, 2026"), "2026-10-01");
+  assert.equal(parseCinodeDate("3 Dec, 2025"), "2025-12-03");
+  assert.equal(parseCinodeDate("1 okt. 2026"), "2026-10-01");
+  assert.equal(parseCinodeDate("2026-10-28"), "2026-10-28");
+  assert.equal(parseCinodeDate("No dates set"), undefined);
+});
+
+test("riktig listsida: strukturerade fält per kort", () => {
+  const items = parseCinodeListing(realList, "https://cinode.com/market/requests");
+  assert.deepEqual(items.map((i) => i.id), ["cinode:22721", "cinode:22720", "cinode:22714"]);
+  const [arkitekt, test_, dev] = items;
+  assert.deepEqual(
+    { ...arkitekt },
+    {
+      id: "cinode:22721",
+      source: "Cinode",
+      url: "https://cinode.market/requests/22721",
+      title: "Integrationsarkitekt",
+      company: "Nexer Group",
+      location: "Stockholm",
+      workMode: "Hybrid · 50 % distans",
+      published: "2026-09-25",
+      deadline: "2026-09-30",
+    },
+  );
+  assert.equal(test_.start, "2027-01-01");
+  assert.equal(test_.end, "2028-12-31");
+  assert.equal(test_.deadline, "2026-10-01");
+  assert.equal(test_.description, undefined);
+  assert.equal(dev.location, "Luleå");
+  assert.equal(dev.workMode, "På plats");
+  assert.equal(dev.published, "2025-12-03");
+  assert.equal(dev.start, "2026-11-01");
+});
+
+test("cursor för Load more", () => {
+  assert.equal(extractNextCursor(realList), "eyJQSyI6eyJTIjoiUkVRVUVTVCMyMjY4MSJ9fQ");
+  assert.equal(extractNextCursor('{"items":[],"nextCursor":"abc"}'), "abc");
+  assert.equal(extractNextCursor("<div></div>"), null);
+});
+
+test("Load more-svar som HTML-fragment och som JSON", () => {
+  const card = realList.slice(realList.indexOf('<div class="requests-list__card" data-href="/market/requests/22714"'), realList.indexOf("</div>\n<button"));
+  const html = parseLoadMoreResponse(card + '<button data-next-cursor="NEXT">Load more</button>', "https://cinode.com/market/requests");
+  assert.deepEqual(html.items.map((i) => i.id), ["cinode:22714"]);
+  assert.equal(html.cursor, "NEXT");
+
+  const json = parseLoadMoreResponse(JSON.stringify({ html: card, nextCursor: "N2" }), "https://cinode.com/market/requests");
+  assert.deepEqual(json.items.map((i) => i.id), ["cinode:22714"]);
+  assert.equal(json.items[0].title, "Systemutvecklare");
+  assert.equal(json.cursor, "N2");
+
+  const objs = parseLoadMoreResponse(JSON.stringify({ items: [{ id: 22600, title: "Scrum Master" }] }), "https://cinode.com/market/requests");
+  assert.deepEqual(objs.items.map((i) => [i.id, i.title]), [["cinode:22600", "Scrum Master"]]);
+});
