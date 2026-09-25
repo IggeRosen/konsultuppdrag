@@ -153,3 +153,16 @@ test("Load more-svar som HTML-fragment och som JSON", () => {
   const objs = parseLoadMoreResponse(JSON.stringify({ items: [{ id: 22600, title: "Scrum Master" }] }), "https://cinode.com/market/requests");
   assert.deepEqual(objs.items.map((i) => [i.id, i.title]), [["cinode:22600", "Scrum Master"]]);
 });
+
+test("cursor hittas i header, andra data-attribut, dolda fält och JSON", () => {
+  assert.equal(extractNextCursor("<div></div>", { "x-next-cursor": "H1" }), "H1");
+  assert.equal(extractNextCursor(`<div id="requests" data-cursor='A1'></div>`), "A1");
+  assert.equal(extractNextCursor(`<input type="hidden" name="nextCursor" value="I1">`), "I1");
+  assert.equal(extractNextCursor(`<input value="I2" type="hidden" name="next-cursor">`), "I2");
+  assert.equal(extractNextCursor('{"items":[],"nextToken":"T1"}'), "T1");
+});
+
+test("Load more-svar: cursor från header", () => {
+  const r = parseLoadMoreResponse("<div></div>", "https://cinode.com/market/requests", { "x-next-cursor": "HC" });
+  assert.equal(r.cursor, "HC");
+});

@@ -108,10 +108,10 @@ export async function GET(req: Request) {
       ),
     ].slice(0, 60);
 
-    const cursor = site.host === "brainville.com" ? null : extractNextCursor(res.body);
+    const cursor = site.host === "brainville.com" ? null : extractNextCursor(res.body, res.headers);
     const loadMoreProbe =
       cursor && params.get("probe") === "1"
-        ? (await probeLoadMore(res.url, cursor, new Set(items.map((a) => a.id)))).results
+        ? await probeLoadMore(res.url, cursor, new Set(items.map((a) => a.id)))
         : undefined;
 
     return NextResponse.json({

@@ -117,16 +117,31 @@ function parseStructuredCard($: cheerio.CheerioAPI, card: ReturnType<cheerio.Che
 }
 
 /** Cursor till nästa sida i Cinode Markets "Load more" (data-next-cursor). */
-export function extractNextCursor(html: string): string | null {
-  const m = html.match(/data-next-cursor\s*=\s*"([^"]+)"/) ?? html.match(/"(?:nextCursor|next_cursor|cursor)"\s*:\s*"([^"]+)"/);
-  return m?.[1] ?? null;
+export function extractNextCursor(html: string, headers: Record<string, string> = {}): string | null {
+  // 1) HTTP-header, t.ex. "x-next-cursor".
+  for (const [k, v] of Object.entries(headers)) if (/cursor/i.test(k) && v) return v;
+  // 2) data-next-cursor / data-cursor / andra data-*cursor*-attribut.
+  const attr = html.match(/data-[\w-]*cursor[\w-]*\s*=\s*(["'])([^"']+)\1/i);
+  if (attr) return attr[2];
+  // 3) Dolt fält: <input name="nextCursor" value="...">
+  const input =
+    html.match(/<input[^>]*name=["'][\w-]*cursor[\w-]*["'][^>]*value=["']([^"']+)["']/i) ??
+    html.match(/<input[^>]*value=["']([^"']+)["'][^>]*name=["'][\w-]*cursor[\w-]*["']/i);
+  if (input) return input[1];
+  // 4) JSON-fält.
+  const json = html.match(/"(?:next_?cursor|cursor|next_?token|lastEvaluatedKey|continuation)"\s*:\s*"([^"]+)"/i);
+  return json?.[1] ?? null;
 }
 
 /**
  * Tolkar svaret från "Load more": antingen ett HTML-fragment med kort, eller
  * JSON som innehåller HTML och/eller uppdragsobjekt.
  */
-export function parseLoadMoreResponse(body: string, pageUrl: string): { items: Assignment[]; cursor: string | null } {
+export function parseLoadMoreResponse(
+  body: string,
+  pageUrl: string,
+  headers: Record<string, string> = {},
+): { items: Assignment[]; cursor: string | null } {
   const trimmed = body.trim();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
@@ -143,12 +158,12 @@ export function parseLoadMoreResponse(body: string, pageUrl: string): { items: A
       // Ren JSON utan HTML: slå in den i ett script så att JSON-tolkningen hittar objekten.
       const fromJson = parseCinodeListing(`<script>${trimmed.replace(/<\/script/gi, "")}</script>`, pageUrl);
       const byId = new Map([...fromJson, ...fromHtml].map((a) => [a.id, a]));
-      return { items: [...byId.values()], cursor: extractNextCursor(trimmed) };
+      return { items: [...byId.values()], cursor: extractNextCursor(trimmed, headers) };
     } catch {
       /* inte JSON – tolka som HTML */
     }
   }
-  return { items: parseCinodeListing(body, pageUrl), cursor: extractNextCursor(body) };
+  return { items: parseCinodeListing(body, pageUrl), cursor: extractNextCursor(body, headers) };
 }
 
 /** Tolkar en listsida med uppdrag (sökresultat eller nyckelordssida). */

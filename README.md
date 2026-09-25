@@ -52,9 +52,10 @@ och `/PublicProfile/Requisition?...&id=<id>`. Inbäddad JSON i `<script>` tolkas
 
 1. Listsidan `cinode.com/market/requests` (20 uppdrag per sida). Varje kort tolkas strukturerat:
    titel, kund, ort, distans/hybrid, period, publicerad och sista svarsdag.
-   Nästa sida hämtas via "Load more"-knappens `data-next-cursor`. Adressen knappen anropar provas
-   fram automatiskt (se `/api/debug?url=https://cinode.market/requests&probe=1`) eller sätts med
-   `CINODE_LOAD_MORE_URL`, t.ex. `https://cinode.com/market/requests?cursor={cursor}`. Max `CINODE_MAX_PAGES` = 10.
+   Nästa sida hämtas via "Load more"-knappens `data-next-cursor` med `?nextCursor=<cursor>`.
+   Slutar den adressen fungera provas alternativ automatiskt (se
+   `/api/debug?url=https://cinode.market/requests&probe=1`), och den kan överstyras med
+   `CINODE_LOAD_MORE_URL`, t.ex. `https://cinode.com/market/requests?nextCursor={cursor}`. Max `CINODE_MAX_PAGES` = 10.
 2. Sitemapen (`robots.txt` → `sitemap.xml`): de nyaste uppdragen (högst id), max `CINODE_MAX_SITEMAP` = 80
 3. Detaljsidor `cinode.market/requests/<id>`: titel och kund ur sidtiteln
    ("Cinode Market - Titel - Kund - Referens"), JSON-LD `JobPosting`, sista svarsdag,
