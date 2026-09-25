@@ -170,3 +170,28 @@ test("pris i olika format och omfattning", () => {
   assert.equal(a.extent, "40 tim/vecka");
   assert.equal(a.workMode, "Hybrid · 50 % distans");
 });
+
+test("riktiga värden för kund, pris, nivå och omfattning (2026-09-25)", () => {
+  const job = {
+    id: 84303,
+    title: "Informationssamordnare samt BIM/CAD - & Datasamordnare",
+    startDate: "2026-10-21",
+    company: null,
+    client: null,
+    legalEntityClient: { id: 367, publicProfileName: null, name: "Järfälla kommun", vatNumber: "SE212000004301", country: "SE" },
+    promoteClient: false,
+    rate: { currency: "SEK", maxRate: null, clientRateType: "FIXED" },
+    level: "SENIOR",
+    hoursPerWeek: 40,
+    remoteness: 50,
+    origin: { name: "Ework Group AB", id: 2 },
+    skills: [{ skill: { name: "BIM", id: 1 } }],
+  };
+  const a = mapVeramaJob(job)!;
+  assert.equal(a.company, "Järfälla kommun");
+  assert.equal(a.rate, undefined, "maxRate: null ska inte ge något pris");
+  assert.equal(a.extent, "40 tim/vecka");
+  assert.equal(a.workMode, "Hybrid · 50 % distans");
+  assert.equal(a.description, "Nivå: Senior. Kompetenser: BIM");
+  assert.equal(mapVeramaJob({ ...job, rate: { currency: "SEK", maxRate: 950, clientRateType: "FIXED" } })!.rate, "950 kr/tim");
+});

@@ -122,8 +122,8 @@ export function rateOf(o: Obj): string | undefined {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const r = raw as Obj;
     const inner = (r.value && typeof r.value === "object" ? r.value : r) as Obj;
-    max = num(first(inner, ["max", "maxAmount", "to", "amount", "value", "price", "hourlyRate"]));
-    min = num(first(inner, ["min", "minAmount", "from"]));
+    max = num(first(inner, ["maxRate", "max", "maxAmount", "to", "amount", "value", "price", "hourlyRate"]));
+    min = num(first(inner, ["minRate", "min", "minAmount", "from"]));
     currency = str(first(inner, ["currency", "currencyCode"])) ?? str(first(r, ["currency", "currencyCode"])) ?? currency;
     const per = str(first(r, ["unit", "type", "period", "rateType"]));
     if (per && /month|månad/i.test(per)) unit = "mån";
@@ -143,6 +143,8 @@ function extentOf(o: Obj): string | undefined {
   return pct && pct <= 100 ? `${pct} %` : undefined;
 }
 
+const LEVELS_SV: Record<string, string> = { JUNIOR: "Junior", MEDIOR: "Medior", MID: "Medior", SENIOR: "Senior", EXPERT: "Expert" };
+
 /**
  * Mappar ett uppdragsobjekt från Veramas JSON till en Assignment. Fältnamnen
  * är inte dokumenterade, så flera varianter provas. Returnerar null för
@@ -158,7 +160,13 @@ export function mapVeramaJob(o: Obj): Assignment | null {
   const idStr = String(id);
   const skills = first(o, ["skills", "competences", "requiredSkills", "tags"]);
   const skillText = Array.isArray(skills) ? skills.map((s) => nameOf((s as Obj)?.skill ?? s)).filter(Boolean).join(", ") : undefined;
-  const description = [str(first(o, ["description", "summary", "shortDescription", "text"])), skillText ? `Kompetenser: ${skillText}` : undefined]
+  const level = str(first(o, ["level", "seniority"]));
+  const levelSv = level ? (LEVELS_SV[level.toUpperCase()] ?? level) : undefined;
+  const description = [
+    str(first(o, ["description", "summary", "shortDescription", "text"])),
+    levelSv ? `Nivå: ${levelSv}.` : undefined,
+    skillText ? `Kompetenser: ${skillText}` : undefined,
+  ]
     .filter(Boolean)
     .join(" ")
     .slice(0, 2000);
