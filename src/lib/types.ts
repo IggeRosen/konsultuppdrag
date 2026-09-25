@@ -9,6 +9,12 @@ export interface Assignment {
   published?: string;
   deadline?: string;
   start?: string;
+  /** Start i klartext, t.ex. "Omgående" eller "Om 2 månader" */
+  startText?: string;
+  /** Uppdragslängd, t.ex. "12 månader" */
+  duration?: string;
+  /** Omfattning, t.ex. "40 tim/vecka" */
+  extent?: string;
   description?: string;
 }
 
