@@ -12,27 +12,28 @@ import {
 } from "./ework-parse.ts";
 
 // Ework publicerar sina uppdrag på Verama (app.verama.com), en JavaScript-app
-// som hämtar listan från ett JSON-API. Adressen är inte dokumenterad, så vi
-// provar de troligaste och använder den som svarar med uppdrag. Är adressen
-// känd kan den sättas med env EWORK_API_URL, t.ex.
-//   https://app.verama.com/api/public/job-requests?page={page}&size=50
+// som hämtar listan från ett publikt JSON-API:
+//   https://app.verama.com/api/public/job-requests?page=0&size=50
+// (Spring-sida: { content: [...], totalPages, last }, verifierat via /api/debug).
+// Svarar den inte provas några alternativ. Adressen kan överstyras med env
+// EWORK_API_URL, där {page} ersätts med sidnumret.
 const MAX_PAGES = Number(process.env.EWORK_MAX_PAGES ?? 6);
 const MAX_FROM_SITEMAP = Number(process.env.EWORK_MAX_SITEMAP ?? 60);
 const MAX_DETAIL_FETCHES = Number(process.env.EWORK_MAX_DETAILS ?? 60);
 
 const JSON_HEADERS = { Accept: "application/json, text/plain, */*", "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8" };
 
+export const DEFAULT_API = `${VERAMA_BASE}/api/public/job-requests?page={page}&size=50&sort=firstDayOfApplications,DESC`;
+
 export function apiCandidates(): string[] {
-  if (process.env.EWORK_API_URL) return [process.env.EWORK_API_URL];
   const q = "page={page}&size=50";
   return [
-    `${VERAMA_BASE}/api/public/job-requests?${q}`,
-    `${VERAMA_BASE}/api/public/job-requests/search?${q}`,
-    `${VERAMA_BASE}/api/public/job-requests?${q}&sort=firstDayOfApplications,DESC`,
-    `${VERAMA_BASE}/api/job-requests/public?${q}`,
-    `${VERAMA_BASE}/api/job-requests?${q}`,
-    `${VERAMA_BASE}/api/v1/public/job-requests?${q}`,
-    `${VERAMA_BASE}/api/public/jobs?${q}`,
+    ...new Set([
+      process.env.EWORK_API_URL || DEFAULT_API,
+      `${VERAMA_BASE}/api/public/job-requests?${q}`,
+      `${VERAMA_BASE}/api/public/job-requests/search?${q}`,
+      `${VERAMA_BASE}/api/job-requests/public?${q}`,
+    ]),
   ];
 }
 
@@ -43,6 +44,9 @@ export interface ApiProbe {
   bytes: number;
   items: number;
   sample?: string;
+  /** Fältnamnen i första uppdragsobjektet och hur det tolkades – för att verifiera mappningen */
+  firstKeys?: string[];
+  firstItem?: Assignment;
 }
 
 async function fetchApiPage(url: string): Promise<{ status: number; items: Assignment[]; json: unknown; contentType?: string; bytes: number; body: string }> {
@@ -72,7 +76,18 @@ export async function probeEworkApi(): Promise<ApiProbe[]> {
       const url = tpl.replace("{page}", "0");
       try {
         const r = await fetchApiPage(url);
-        return { url, status: r.status, contentType: r.contentType, bytes: r.bytes, items: r.items.length, sample: r.body.slice(0, 600) };
+        const content = (r.json as { content?: unknown[] } | null)?.content;
+        const firstObj = Array.isArray(content) && content[0] && typeof content[0] === "object" ? (content[0] as object) : undefined;
+        return {
+          url,
+          status: r.status,
+          contentType: r.contentType,
+          bytes: r.bytes,
+          items: r.items.length,
+          sample: r.body.slice(0, 600),
+          firstKeys: firstObj ? Object.keys(firstObj) : undefined,
+          firstItem: r.items[0],
+        };
       } catch (err) {
         return { url, status: err instanceof Error ? err.message : String(err), bytes: 0, items: 0 };
       }
@@ -82,16 +97,19 @@ export async function probeEworkApi(): Promise<ApiProbe[]> {
 
 /** Hämtar uppdrag via JSON-API:t, med paginering. */
 async function scrapeApi(errors: string[]): Promise<{ items: Assignment[]; pages: number; via: string }> {
-  const probes = await Promise.all(
-    apiCandidates().map((tpl) =>
-      fetchApiPage(tpl.replace("{page}", "0"))
-        .then((r) => ({ tpl, r }))
-        .catch(() => null),
-    ),
-  );
-  const hit = probes.find((p) => p && p.r.items.length > 0);
+  const [primary, ...fallbacks] = apiCandidates();
+  const tryTpl = (tpl: string) =>
+    fetchApiPage(tpl.replace("{page}", "0"))
+      .then((r) => ({ tpl, r }))
+      .catch(() => null);
+  let hit = await tryTpl(primary);
+  let tried = [hit];
+  if (!hit || !hit.r.items.length) {
+    tried = [hit, ...(await Promise.all(fallbacks.map(tryTpl)))];
+    hit = tried.find((p) => p && p.r.items.length > 0) ?? null;
+  }
   if (!hit) {
-    const statuses = probes.map((p) => p?.r.status ?? "fel").join(", ");
+    const statuses = tried.map((p) => p?.r.status ?? "fel").join(", ");
     errors.push(`API: inget svar med uppdrag (${statuses})`);
     return { items: [], pages: 0, via: "" };
   }
@@ -143,8 +161,8 @@ export const ework: SourceAdapter = {
       strategies.push(`listsidan: ${html.length}`);
     }
 
-    // 3) Sitemap: de nyaste uppdragen (högst id) som inte redan hittats.
-    const sitemapIds = (await idsFromSitemaps(VERAMA_BASE, extractVeramaId, { errors, prefer: /job/i }))
+    // 3) Sitemap (bara om API:t inte gav något): de nyaste uppdragen (högst id).
+    const sitemapIds = (api.items.length ? [] : await idsFromSitemaps(VERAMA_BASE, extractVeramaId, { errors, prefer: /job/i }))
       .filter((id) => !byId.has(`ework:${id}`))
       .sort((a, b) => Number(b) - Number(a))
       .slice(0, MAX_FROM_SITEMAP);
@@ -157,7 +175,7 @@ export const ework: SourceAdapter = {
 
     // 4) Detaljsidor för uppdrag som saknar titel eller beskrivning.
     const toEnrich = [...byId.values()]
-      .filter((a) => !a.title || (a.description?.length ?? 0) < 200)
+      .filter((a) => !a.title || (!api.items.length && (a.description?.length ?? 0) < 200))
       .sort((a, b) => Number(!b.title) - Number(!a.title))
       .slice(0, MAX_DETAIL_FETCHES);
     let enriched = 0;

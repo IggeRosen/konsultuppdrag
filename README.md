@@ -71,13 +71,14 @@ Uppdrag vars sista svarsdag har passerat filtreras bort.
 Ework publicerar sina uppdrag på [Verama](https://app.verama.com/sv/job-requests), en
 JavaScript-app som hämtar listan från ett JSON-API. Appen läser:
 
-1. JSON-API:t: tänkbara adresser provas och den som svarar med uppdrag används, med
-   paginering (`page`, `totalPages`/`last`), max `EWORK_MAX_PAGES` = 6. Är adressen känd
-   kan den sättas med `EWORK_API_URL`, t.ex. `https://app.verama.com/api/public/job-requests?page={page}&size=50`.
-   Se vilka som svarar med `/api/debug?url=https://app.verama.com/sv/job-requests&probe=1`.
+1. JSON-API:t `app.verama.com/api/public/job-requests?page=0&size=50` (publikt, nyaste först),
+   med paginering (`totalPages`/`last`), max `EWORK_MAX_PAGES` = 6 sidor à 50 uppdrag. Svarar
+   det inte provas några alternativ. Adressen kan överstyras med `EWORK_API_URL` (`{page}` = sidnummer).
+   Kontrollera med `/api/debug?url=https://app.verama.com/sv/job-requests&probe=1`, som även visar
+   fältnamnen (`firstKeys`) och hur första uppdraget tolkas (`firstItem`).
 2. Listsidan `app.verama.com/sv/job-requests` (länkar och inbäddad JSON om den är serverrenderad)
-3. Sitemapen: de nyaste uppdragen, max `EWORK_MAX_SITEMAP` = 60
-4. Detaljsidor `app.verama.com/sv/job-requests/<id>` (titel och beskrivning ur meta), max `EWORK_MAX_DETAILS` = 60
+3. Sitemapen (bara om API:t inte svarar): de nyaste uppdragen, max `EWORK_MAX_SITEMAP` = 60
+4. Detaljsidor `app.verama.com/sv/job-requests/<id>` för uppdrag som saknar titel (titel och beskrivning ur meta), max `EWORK_MAX_DETAILS` = 60
 
 Uppdrag vars sista ansökningsdag har passerat filtreras bort.
 

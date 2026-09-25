@@ -45,3 +45,28 @@ test("tydligt fel när inget fungerar", async () => {
     restore();
   }
 });
+
+test("använder standardadressen direkt och hoppar över sondering, sitemap och detaljsidor", async () => {
+  const calls: string[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    calls.push(url);
+    const u = new URL(url);
+    if (u.pathname === "/api/public/job-requests" && u.searchParams.get("sort")) {
+      const job = { id: 7, title: "Java", startDate: "2026-10-01", description: "x".repeat(50) };
+      return new Response(JSON.stringify({ content: [job], totalPages: 1, last: true }));
+    }
+    return new Response("<html></html>");
+  }) as typeof fetch;
+  try {
+    const { assignments } = await ework.fetchAssignments();
+    assert.deepEqual(assignments.map((a) => a.id), ["ework:7"]);
+    const paths = calls.map((c) => new URL(c).pathname);
+    assert.ok(!paths.includes("/api/public/job-requests/search"), "ska inte sondera alternativ");
+    assert.ok(!paths.some((p) => /sitemap|robots/.test(p)), "ska inte läsa sitemap");
+    assert.ok(!paths.some((p) => /\/job-requests\/\d+/.test(p)), "ska inte hämta detaljsidor");
+  } finally {
+    globalThis.fetch = original;
+  }
+});

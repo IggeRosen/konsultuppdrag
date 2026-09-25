@@ -99,3 +99,52 @@ test("detaljsida: titel från meta och beskrivning", () => {
   assert.equal(d.title, "API Specialist");
   assert.match(d.description!, /Kong och Azure/);
 });
+
+test("riktig struktur från /api/public/job-requests (id och title antagna)", () => {
+  // Fälten utom id/title är tagna ur ett riktigt svar (2026-09-25) via /api/debug&probe=1.
+  const page = {
+    content: [
+      {
+        systemId: "JR-54961",
+        id: 71300, // antaget
+        title: "Projektledare anläggning", // antaget
+        startDate: "2026-10-21",
+        endDate: "2028-10-20",
+        locations: [
+          {
+            city: "Stockholm",
+            country: "Sverige",
+            countryCode: "SWE",
+            suggestedPhoneCode: "SE",
+            name: "Stockholm, Sverige",
+            locationId: "here:cm:namedplace:20298488",
+            coordinates: { lat: 59.33257, lon: 18.06683 },
+          },
+        ],
+        brokerFee: { description: "N/A", percentage: 0.0 },
+        firstDayOfApplications: "2026-09-25T11:56:34.550589+02:00",
+        lastDayOfApplications: "2026-10-02T23:59:00+02:00",
+        skills: [
+          { skill: { name: "anläggningsprojekt", id: 24965, signature: "vcX2AVMF" } },
+          { skill: { name: "Datasamordning", id: 16995, signature: "XMYc5M6N" } },
+        ],
+      },
+    ],
+    totalPages: 12,
+    last: false,
+  };
+  const items = parseVeramaJson(page);
+  assert.equal(items.length, 1, "kompetenser och orter får inte tolkas som uppdrag");
+  assert.deepEqual(items[0], {
+    id: "ework:71300",
+    source: "Ework",
+    title: "Projektledare anläggning",
+    url: "https://app.verama.com/sv/job-requests/71300",
+    location: "Stockholm",
+    published: "2026-09-25",
+    deadline: "2026-10-02",
+    start: "2026-10-21",
+    end: "2028-10-20",
+    description: "Kompetenser: anläggningsprojekt, Datasamordning",
+  });
+});
