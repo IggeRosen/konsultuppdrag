@@ -71,6 +71,28 @@ export function parseCinodeDate(text: string | undefined): string | undefined {
   return `${m[3]}-${String(month).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
 }
 
+// Cinode visar ibland orter på engelska; översätt de vanligaste så att nyckelord som "Göteborg" träffar.
+const PLACES_SV: Record<string, string> = {
+  gothenburg: "Göteborg",
+  sweden: "Sverige",
+  scania: "Skåne",
+  copenhagen: "Köpenhamn",
+  "the whole of sweden": "Hela Sverige",
+};
+export function swedishPlace(place: string): string {
+  return PLACES_SV[place.toLowerCase()] ?? place;
+}
+
+/** "SEK 676 / hour" → "676 kr/tim", "EUR 80 / hour" → "80 EUR/tim". */
+export function formatRate(text: string): string {
+  const m = clean(text).match(/(?:(SEK|EUR|NOK|DKK|USD)\s*)?([\d\s.,]+?)\s*(SEK|kr|EUR|NOK|DKK|USD)?\s*\/\s*(hour|h|tim(?:me)?|timma|month|månad)/i);
+  if (!m) return clean(text);
+  const currency = (m[1] ?? m[3] ?? "SEK").toUpperCase();
+  const amount = m[2].replace(/\s/g, "");
+  const unit = /month|månad/i.test(m[4]) ? "mån" : "tim";
+  return currency === "SEK" || currency === "KR" ? `${amount} kr/${unit}` : `${amount} ${currency}/${unit}`;
+}
+
 const WORK_MODE_SV: Record<string, string> = { hybrid: "Hybrid", remote: "Distans", onsite: "På plats", "on-site": "På plats" };
 
 /**
@@ -84,14 +106,16 @@ function parseStructuredCard($: cheerio.CheerioAPI, card: ReturnType<cheerio.Che
   if (!heading.length) return null;
 
   let period = "";
+  let rate = "";
   let location = "";
   let remote = "";
   card.find(".focus__item").each((_, el) => {
     const icon = $(el).find("use").attr("href") ?? $(el).find("use").attr("xlink:href") ?? "";
     const text = clean($(el).text());
     if (/calendar/i.test(icon)) period = text;
+    else if (/icon-tag/i.test(icon)) rate = formatRate(text);
     else if (/map-pin/i.test(icon)) {
-      location = clean($(el).find("a").first().text()) || text.replace(/\(.*?\)/g, "").trim();
+      location = swedishPlace(clean($(el).find("a").first().text()) || text.replace(/\(.*?\)/g, "").trim());
       remote = clean($(el).find("span").last().text()).replace(/[()]/g, "");
     }
   });
@@ -109,6 +133,7 @@ function parseStructuredCard($: cheerio.CheerioAPI, card: ReturnType<cheerio.Che
     company: clean(card.find(".requests-list__card-company").first().text()),
     location,
     workMode,
+    rate,
     start: parseCinodeDate(startRaw),
     end: parseCinodeDate(endRaw),
     published: parseCinodeDate(footer.match(/(?:Announced|Publicerad|Annonserad)\s+(.*?\d{4})/i)?.[1]),

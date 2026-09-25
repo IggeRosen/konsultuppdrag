@@ -166,3 +166,32 @@ test("Load more-svar: cursor från header", () => {
   const r = parseLoadMoreResponse("<div></div>", "https://cinode.com/market/requests", { "x-next-cursor": "HC" });
   assert.equal(r.cursor, "HC");
 });
+
+import { formatRate, swedishPlace } from "../src/lib/sources/cinode-parse.ts";
+
+test("riktigt Load more-kort: pris, engelsk ort och cursor i header", () => {
+  const html = readFileSync(new URL("./fixtures/cinode-loadmore-card.html", import.meta.url), "utf8");
+  const next = "eyJHU0kyUEsiOnsiUyI6Ik1FVEFEQVRBIn0sIkdTSTJTSyI6eyJOIjoiMTc5MDA1ODY1MSJ9LCJQSyI6eyJTIjoiUkVRVUVTVCMyMjYzNSJ9LCJTSyI6eyJTIjoiTUVUQURBVEEifX0";
+  const r = parseLoadMoreResponse(html, "https://cinode.com/market/requests", { "content-type": "text/html", "x-next-cursor": next });
+  assert.equal(r.cursor, next);
+  assert.equal(r.items.length, 1);
+  const [a] = r.items;
+  assert.equal(a.id, "cinode:22635");
+  assert.equal(a.company, "Diadrom");
+  assert.equal(a.location, "Göteborg");
+  assert.equal(a.workMode, "På plats");
+  assert.equal(a.rate, "676 kr/tim");
+  assert.equal(a.start, "2026-09-21");
+  assert.equal(a.end, "2027-09-11");
+  assert.equal(a.published, "2026-09-22");
+  assert.equal(a.deadline, "2026-10-06");
+});
+
+test("pris och ortnamn", () => {
+  assert.equal(formatRate("SEK 676 / hour"), "676 kr/tim");
+  assert.equal(formatRate("EUR 85 / hour"), "85 EUR/tim");
+  assert.equal(formatRate("SEK 120 000 / month"), "120000 kr/mån");
+  assert.equal(formatRate("Enligt avtal"), "Enligt avtal");
+  assert.equal(swedishPlace("Gothenburg"), "Göteborg");
+  assert.equal(swedishPlace("Stockholm"), "Stockholm");
+});

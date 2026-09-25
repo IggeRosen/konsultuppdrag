@@ -308,6 +308,7 @@ export default function App() {
                     a.start && <span>Start {formatDate(a.start)}</span>
                   )}
                   {a.workMode && <span>{a.workMode}</span>}
+                  {a.rate && <span>💰 {a.rate}</span>}
                   {a.duration && <span>⏱ {a.duration}</span>}
                   {a.extent && <span>{a.extent}</span>}
                 </div>
