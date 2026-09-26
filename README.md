@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market** och **Ework** (via Verama).
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama) och **KeyMan**.
 
 ## Funktioner
 
@@ -21,6 +21,8 @@ src/lib/sources/cinode.ts            Cinode Market (listsida + sitemap + detaljs
 src/lib/sources/cinode-loadmore.ts   "Load more"-paginering för Cinode
 src/lib/sources/ework.ts             Ework/Verama (JSON-API + listsida + sitemap + detaljsidor)
 src/lib/sources/ework-parse.ts       tolkning av Veramas JSON och HTML
+src/lib/sources/keyman.ts            KeyMan (listsida + sitemap + detaljsidor)
+src/lib/sources/keyman-parse.ts      tolkning av keyman.se
 src/lib/sitemap.ts                   delad sitemap-läsning
 src/lib/sources/cinode-parse.ts      ren HTML-tolkning för Cinode
 src/lib/parse-utils.ts               delade tolkningshjälpare (kort, JSON, JSON-LD, nästa sida)
@@ -29,7 +31,7 @@ src/lib/sources/index.ts             register över källor – lägg till nya p
 src/lib/aggregate.ts                 kör alla källor parallellt, cache 15 min
 src/lib/match.ts                     nyckelordsmatchning och poängsättning
 src/app/api/assignments/route.ts     GET /api/assignments?keywords=java,react&mode=any|all
-src/app/api/debug/route.ts           GET /api/debug?url=<brainville-, cinode- eller verama-url> – visar vad scrapern ser
+src/app/api/debug/route.ts           GET /api/debug?url=<url hos någon av källorna> – visar vad scrapern ser
 src/components/App.tsx               UI
 ```
 
@@ -82,6 +84,19 @@ JavaScript-app som hämtar listan från ett JSON-API. Appen läser:
 
 Uppdrag vars sista ansökningsdag har passerat filtreras bort.
 
+### KeyMan
+
+KeyMan publicerar sina uppdrag på [keyman.se/sv/uppdrag](https://www.keyman.se/sv/uppdrag/).
+Ett uppdrag har adressen `/sv/<kategori>/<titel>-<id>`. Appen läser:
+
+1. Listsidan, med paginering (nästa-länk, `?page=` eller WordPress `/page/N/`), max `KEYMAN_MAX_PAGES` = 10
+2. Sitemapen (`robots.txt`, `sitemap.xml`, `sitemap_index.xml`, `wp-sitemap.xml`): de nyaste uppdragen, max `KEYMAN_MAX_SITEMAP` = 60
+3. Detaljsidor: titel och kund ur sidtiteln ("Titel - KUND - KeyMan" eller "… till Kund - KeyMan"),
+   etiketterade fält (Ort, Omfattning, Start, Sista ansökningsdag …), JSON-LD och beskrivning,
+   max `KEYMAN_MAX_DETAILS` = 80
+
+Kategorin ur adressen (t.ex. Data/IT) läggs i beskrivningen. Utgångna uppdrag filtreras bort.
+
 ### Lägga till en ny portal
 
 Skapa `src/lib/sources/<portal>.ts` som exporterar en `SourceAdapter`
@@ -99,7 +114,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida

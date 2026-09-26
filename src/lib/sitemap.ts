@@ -20,16 +20,17 @@ export function sitemapsFromRobots(robots: string): string[] {
 }
 
 /**
- * Samlar uppdrags-id:n från en sajts sitemap(s): robots.txt → Sitemap-rader
- * plus /sitemap.xml. Följer sitemap-index ett steg och prioriterar
- * under-sitemaps vars namn matchar `prefer`.
+ * Samlar uppdragsadresser från en sajts sitemap(s): robots.txt → Sitemap-rader
+ * plus /sitemap.xml och WordPress vanliga index. Följer sitemap-index ett steg
+ * och prioriterar under-sitemaps vars namn matchar `prefer`.
+ * Returnerar id → adress.
  */
-export async function idsFromSitemaps(
+export async function urlsFromSitemaps(
   base: string,
   extractId: (url: string) => string | null,
   { errors, prefer = /request|job|assignment|uppdrag/i }: { errors: string[]; prefer?: RegExp },
-): Promise<string[]> {
-  const roots = new Set([`${base}/sitemap.xml`]);
+): Promise<Map<string, string>> {
+  const roots = new Set([`${base}/sitemap.xml`, `${base}/sitemap_index.xml`, `${base}/wp-sitemap.xml`]);
   try {
     const robots = await fetchText(`${base}/robots.txt`, { revalidate: 24 * 3600 });
     if (robots.status < 400) sitemapsFromRobots(robots.body).forEach((s) => roots.add(s));
@@ -37,15 +38,18 @@ export async function idsFromSitemaps(
     /* robots.txt är frivillig */
   }
 
-  const ids = new Set<string>();
+  const found = new Map<string, string>();
+  const visited = new Set<string>();
   const visit = async (url: string, depth: number) => {
+    if (visited.has(url)) return;
+    visited.add(url);
     try {
       const res = await fetchText(url, { revalidate: 3600 });
       if (res.status >= 400) return;
       const { urls, sitemaps } = parseSitemap(res.body);
       for (const u of urls) {
         const id = extractId(u);
-        if (id) ids.add(id);
+        if (id && !found.has(id)) found.set(id, u);
       }
       if (depth < 1) {
         const children = sitemaps.sort((a, b) => Number(prefer.test(b)) - Number(prefer.test(a))).slice(0, 10);
@@ -56,5 +60,14 @@ export async function idsFromSitemaps(
     }
   };
   await Promise.all([...roots].map((r) => visit(r, 0)));
-  return [...ids];
+  return found;
+}
+
+/** Som urlsFromSitemaps men returnerar bara id:n. */
+export async function idsFromSitemaps(
+  base: string,
+  extractId: (url: string) => string | null,
+  opts: { errors: string[]; prefer?: RegExp },
+): Promise<string[]> {
+  return [...(await urlsFromSitemaps(base, extractId, opts)).keys()];
 }

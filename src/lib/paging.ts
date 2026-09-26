@@ -2,8 +2,9 @@ import type { Assignment } from "./types.ts";
 import { fetchText } from "./http.ts";
 import { findNextPage } from "./parse-utils.ts";
 
-// Sidparametrar vi provar om sidan saknar en vanlig "nästa"-länk.
-const PAGE_PARAMS = ["page", "p", "pageNumber", "pageIndex", "currentPage"];
+// Sätt att adressera sida N som vi provar om sidan saknar en vanlig "nästa"-länk:
+// query-parametrar samt WordPress-stilen /page/N/.
+const PAGE_PARAMS = ["page", "p", "pageNumber", "pageIndex", "currentPage", "/page/"];
 
 export interface ListingPage {
   items: Assignment[];
@@ -31,6 +32,10 @@ export async function fetchListing(
 
 function withParam(url: string, key: string, value: number): string {
   const u = new URL(url);
+  if (key === "/page/") {
+    u.pathname = `${u.pathname.replace(/\/page\/\d+\/?$/, "").replace(/\/$/, "")}/page/${value}/`;
+    return u.toString();
+  }
   u.searchParams.set(key, String(value));
   return u.toString();
 }
@@ -79,5 +84,5 @@ export async function scrapePaged(
     if (!page || addNew(page.items) === 0) break;
     pages++;
   }
-  return { items: [...seen.values()], pages, via: `?${param}=` };
+  return { items: [...seen.values()], pages, via: param === "/page/" ? "/page/N/" : `?${param}=` };
 }
