@@ -55,17 +55,41 @@ export async function GET(req: Request) {
     const res = await fetchText(u.toString(), { revalidate: 0 });
 
     if (/\.m?js(\?|$)/.test(u.pathname + u.search) || /^\s*(?:!function|\(function|"use strict"|var |const |let |import )/.test(res.body)) {
+      const js = res.body;
+      // Alla adresser i filen: fullständiga (utom kända tredjepartsbibliotek) och relativa som ser ut som API-anrop.
+      const absoluteUrls = [
+        ...new Set([...js.matchAll(/["'`](https?:\/\/[^"'`\s]{4,200})["'`]/g)].map((m) => m[1])),
+      ].filter((x) => !/w3\.org|angular\.io|reactjs|mozilla\.org|github\.com\/(?:angular|facebook)|schema\.org|cookiebot|googletagmanager|google-analytics/i.test(x));
+      const relativeUrls = [
+        ...new Set([
+          ...[...js.matchAll(/["'`](\/[\w{}$.:-]+(?:\/[\w{}$.:-]*)+)["'`]/g)].map((m) => m[1]),
+          // Template-strängar: `${apiUrl}/job-postings/search`
+          ...[...js.matchAll(/`\$\{[\w.]+\}(\/[\w\/{}$.:-]+)`/g)].map((m) => `\${…}${m[1]}`),
+        ]),
+      ].filter((x) => /api|job|request|search|posting|opportunit|graphql|public/i.test(x));
+      // Konfiguration som apiUrl: "…" / baseUrl: "…".
+      const config = [...js.matchAll(/(\w*(?:api|base|backend|service|gateway)\w*(?:Url|URL|Uri|Endpoint|Host)\w*)\s*:\s*["'`]([^"'`]{2,200})["'`]/gi)]
+        .map((m) => `${m[1]}: ${m[2]}`)
+        .slice(0, 40);
       const hints: string[] = [];
-      const re = /cursor|load-?more|fetch\(|ajax|XMLHttpRequest|\/market\/[\w\/-]+|\/api\/[\w\/{}$.-]+|job-requests|axios/gi;
+      const re = /cursor|load-?more|fetch\(|ajax|XMLHttpRequest|\/market\/[\w\/-]+|\/api\/[\w\/{}$.-]+|job-requests|axios|\.(?:get|post)\(\s*[`"'][^`"']*(?:job|request|search|posting)|graphql/gi;
       let m: RegExpExecArray | null;
       let lastEnd = -1;
-      while ((m = re.exec(res.body)) && hints.length < 40) {
+      while ((m = re.exec(js)) && hints.length < 40) {
         if (m.index < lastEnd) continue;
         const from = Math.max(0, m.index - 200);
-        lastEnd = Math.min(res.body.length, m.index + 250);
-        hints.push(res.body.slice(from, lastEnd));
+        lastEnd = Math.min(js.length, m.index + 250);
+        hints.push(js.slice(from, lastEnd));
       }
-      return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: res.body.length, jsHints: hints });
+      return NextResponse.json({
+        status: res.status,
+        finalUrl: res.url,
+        bytes: js.length,
+        absoluteUrls: absoluteUrls.slice(0, 80),
+        relativeUrls: relativeUrls.slice(0, 80),
+        config,
+        jsHints: hints,
+      });
     }
     const items = site.parse(res.body, res.url);
     const $ = cheerio.load(res.body);
@@ -159,7 +183,13 @@ export async function GET(req: Request) {
       paginationHints,
       forms,
       urlsInScripts,
-      scripts: [...res.body.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]),
+      scripts: [...res.body.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => {
+        try {
+          return new URL(m[1], res.url).toString();
+        } catch {
+          return m[1];
+        }
+      }),
       listSnippet,
       ...(params.get("full") === "1" ? { html: res.body } : {}),
     });
