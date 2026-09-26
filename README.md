@@ -111,7 +111,7 @@ Anropen är tagna ur sajtens JavaScript och används av sajten utan inloggning:
 1. `POST /api/jobsearch` med `{ pageSize, sortOption: { orderBy: "PublishedDate", direction: "Desc" } }`,
    bläddras med `continuationToken` (sidstorlek `MAGNIT_PAGE_SIZE` = 100, max `MAGNIT_MAX_PAGES` = 10)
 2. `GET /api/jobsearch/landing-page-job-requests` som reserv
-3. `GET /api/jobsearch/<id>/details` för beskrivning, max `MAGNIT_MAX_DETAILS` = 40
+3. `GET /api/jobsearch/<id>/details` för beskrivning, max `MAGNIT_MAX_DETAILS` = 120
 
 Sajten är global, så appen visar bara uppdrag i Sverige ("Stockholm, SWE") eller med okänd plats.
 Sätt `MAGNIT_ALL_COUNTRIES=1` för att visa alla. `/api/debug?url=https://magnit-source.magnitglobal.com/&probe=1`

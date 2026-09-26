@@ -13,7 +13,7 @@ import { isSwedish, MAGNIT_GATEWAY, parseMagnitJson } from "./magnit-parse.ts";
 //   GET  /api/jobsearch/{id}/details                (ett uppdrag)
 const pageSize = () => Number(process.env.MAGNIT_PAGE_SIZE ?? 100);
 const MAX_PAGES = Number(process.env.MAGNIT_MAX_PAGES ?? 10);
-const MAX_DETAIL_FETCHES = Number(process.env.MAGNIT_MAX_DETAILS ?? 40);
+const MAX_DETAIL_FETCHES = Number(process.env.MAGNIT_MAX_DETAILS ?? 120);
 // Sätt MAGNIT_ALL_COUNTRIES=1 för att visa uppdrag i alla länder.
 const ALL_COUNTRIES = process.env.MAGNIT_ALL_COUNTRIES === "1";
 
@@ -151,7 +151,7 @@ export const magnit: SourceAdapter = {
     // 3) Detaljer (beskrivning m.m.) via API:t för de uppdrag som återstår.
     const toEnrich = [...byId.values()].filter((a) => (a.description?.length ?? 0) < 200).slice(0, MAX_DETAIL_FETCHES);
     let enriched = 0;
-    await mapLimit(toEnrich, 6, async (a) => {
+    await mapLimit(toEnrich, 10, async (a) => {
       try {
         const res = await fetchText(`${MAGNIT_GATEWAY}/api/jobsearch/${encodeURIComponent(jobId(a))}/details`, {
           headers: { Accept: "application/json" },
