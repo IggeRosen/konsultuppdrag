@@ -13,7 +13,7 @@ export const MAGNIT_GATEWAY = process.env.MAGNIT_GATEWAY_URL ?? "https://app-ope
 
 // Tänkbara adressmönster för ett enskilt uppdrag (sajtens struktur är inte känd än).
 const JOB_RE =
-  /^(?:https?:\/\/[\w.-]*magnitglobal\.com)?(?:\/[a-z]{2}(?:-[a-z]{2})?)?\/(?:jobs?|job-requests?|requests?|opportunit(?:y|ies)|positions?|postings?)\/([\w-]{3,64})\/?(?:[?#].*)?$/i;
+  /^(?:https?:\/\/[\w.-]*magnitglobal\.com)?(?:\/[a-z]{2}(?:-[a-z]{2})?)?\/(?:api\/share\/job|jobs?|job-requests?|requests?|opportunit(?:y|ies)|positions?|postings?)\/([\w-]{3,64})\/?(?:[?#].*)?$/i;
 const NOT_IDS = new Set(["search", "list", "all", "new", "latest", "filter", "filters", "apply", "saved", "sweden", "sverige"]);
 
 export function extractMagnitId(href: string): string | null {
@@ -22,9 +22,13 @@ export function extractMagnitId(href: string): string | null {
   return m[1];
 }
 
-/** Uppdragets adress: objektets egen länk om den finns, annars en gissning. */
+/**
+ * Uppdragets adress. Sajtens "Dela"-knapp använder /api/share/job/<id> på
+ * magnit-source, som skickar vidare till uppdragssidan (ur sajtens JavaScript,
+ * getFullUrl). Har objektet en egen länk används den i stället.
+ */
 export function magnitUrl(id: string, o?: Obj): string {
-  const link = o ? str(o.url ?? o.link ?? o.jobUrl ?? o.publicUrl ?? o.applyUrl ?? o.href) : undefined;
+  const link = o ? str(o.url ?? o.link ?? o.jobUrl ?? o.publicUrl ?? o.href) : undefined;
   if (link) {
     try {
       return new URL(link, MAGNIT_BASE).toString();
@@ -32,7 +36,7 @@ export function magnitUrl(id: string, o?: Obj): string {
       /* ogiltig länk */
     }
   }
-  return `${MAGNIT_BASE}/jobs/${encodeURIComponent(id)}`;
+  return `${MAGNIT_BASE}/api/share/job/${encodeURIComponent(id)}`;
 }
 
 const OPTS = { source: "Magnit", prefix: "magnit", urlFor: magnitUrl, stringIds: true };
