@@ -8,6 +8,7 @@ import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
 import { findNextPage } from "@/lib/parse-utils";
 import { extractVeramaId, parseVeramaDetail, parseVeramaHtml } from "@/lib/sources/ework-parse";
 import { probeEworkApi } from "@/lib/sources/ework";
+import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -16,6 +17,7 @@ const SITES = [
   { host: "cinode.com", parse: parseCinodeListing, extractId: extractCinodeId },
   { host: "verama.com", parse: parseVeramaHtml, extractId: extractVeramaId },
   { host: "eworkgroup.com", parse: parseVeramaHtml, extractId: extractVeramaId },
+  { host: "keyman.se", parse: parseKeymanListing, extractId: extractKeymanId },
 ];
 
 export const runtime = "nodejs";
@@ -25,7 +27,8 @@ export const dynamic = "force-dynamic";
  * Felsökning: /api/debug?url=https://www.brainville.com/PublicPage/RequisitionSearch
  *             /api/debug?url=https://cinode.market/requests
  *             /api/debug?url=https://app.verama.com/sv/job-requests&probe=1
- * Visar vad scrapern ser på en sida. Endast Brainville, Cinode och Ework/Verama tillåts.
+ *             /api/debug?url=https://www.keyman.se/sv/uppdrag/
+ * Visar vad scrapern ser på en sida. Endast de sajter som finns i SITES tillåts.
  * Lägg till &full=1 för att få med hela HTML:en.
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
  * Verama: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
@@ -132,7 +135,11 @@ export async function GET(req: Request) {
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: isVerama
+      detail: site.host === "keyman.se"
+        ? extractKeymanId(res.url)
+          ? parseKeymanDetail(res.body, res.url)
+          : undefined
+        : isVerama
         ? extractVeramaId(res.url)
           ? parseVeramaDetail(res.body)
           : undefined
