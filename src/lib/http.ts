@@ -15,12 +15,16 @@ export async function fetchText(
     timeoutMs = 8000,
     revalidate = 1800,
     headers = {},
-  }: { timeoutMs?: number; revalidate?: number; headers?: Record<string, string> } = {},
+    method = "GET",
+    body,
+  }: { timeoutMs?: number; revalidate?: number; headers?: Record<string, string>; method?: "GET" | "POST"; body?: string } = {},
 ): Promise<FetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
+      method,
+      body,
       signal: controller.signal,
       redirect: "follow",
       headers: {
@@ -29,7 +33,7 @@ export async function fetchText(
         "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
         ...headers,
       },
-      next: { revalidate },
+      ...(method === "GET" ? { next: { revalidate } } : { cache: "no-store" }),
     } as RequestInit);
     const resHeaders: Record<string, string> = {};
     res.headers.forEach((v, k) => {

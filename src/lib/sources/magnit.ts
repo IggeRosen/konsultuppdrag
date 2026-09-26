@@ -1,124 +1,181 @@
 import type { Assignment, SourceAdapter } from "../types.ts";
 import { fetchText, mapLimit } from "../http.ts";
-import { scrapeJsonApi, probeJsonApis } from "../json-api.ts";
-import { urlsFromSitemaps } from "../sitemap.ts";
-import { extractMagnitId, isSwedish, MAGNIT_BASE, MAGNIT_GATEWAY, parseMagnitDetail, parseMagnitHtml, parseMagnitJson } from "./magnit-parse.ts";
+import type { ApiProbe } from "../json-api.ts";
+import { isSwedish, MAGNIT_GATEWAY, parseMagnitJson } from "./magnit-parse.ts";
 
 // Magnit Source (magnit-source.magnitglobal.com) är Magnits öppna marknadsplats,
 // en Angular-app som hämtar uppdragen från en separat API-server (MAGNIT_GATEWAY).
-// Vi provar dess jobsearch-anrop, läser startsidans HTML och sitemapen. En egen
-// adress kan sättas med env MAGNIT_API_URL ({page} = sidnummer från 0).
-const MAX_PAGES = Number(process.env.MAGNIT_MAX_PAGES ?? 6);
-const MAX_FROM_SITEMAP = Number(process.env.MAGNIT_MAX_SITEMAP ?? 60);
-const MAX_DETAIL_FETCHES = Number(process.env.MAGNIT_MAX_DETAILS ?? 60);
+// Anropen nedan är tagna ur sajtens JavaScript (2026-09-26) och används även av
+// sajtens egna partnersidor utan inloggning:
+//   POST /api/jobsearch  { pageSize, sortOption, continuationToken? }
+//        → { jobs: [...], totalCount, continuationToken }
+//   GET  /api/jobsearch/landing-page-job-requests   (startsidans urval)
+//   GET  /api/jobsearch/{id}/details                (ett uppdrag)
+const pageSize = () => Number(process.env.MAGNIT_PAGE_SIZE ?? 100);
+const MAX_PAGES = Number(process.env.MAGNIT_MAX_PAGES ?? 10);
+const MAX_DETAIL_FETCHES = Number(process.env.MAGNIT_MAX_DETAILS ?? 40);
 // Sätt MAGNIT_ALL_COUNTRIES=1 för att visa uppdrag i alla länder.
 const ALL_COUNTRIES = process.env.MAGNIT_ALL_COUNTRIES === "1";
 
-export function magnitApiCandidates(): string[] {
-  const gw = MAGNIT_GATEWAY;
-  return [
-    ...new Set(
-      [
-        process.env.MAGNIT_API_URL,
-        // Riktiga anrop ur sajtens JavaScript (2026-09-26). Startsidans uppdrag är troligen öppna.
-        `${gw}/api/jobsearch/landing-page-job-requests`,
-        `${gw}/api/jobsearch?page={page}&pageSize=50`,
-        `${gw}/api/jobsearch?pageNumber={page}&pageSize=50`,
-        `${gw}/api/jobsearch`,
-      ].filter((u): u is string => !!u),
-    ),
-  ];
+const JSON_HEADERS = { Accept: "application/json", "Content-Type": "application/json" };
+
+interface SearchPage {
+  jobs?: unknown[];
+  totalCount?: number;
+  continuationToken?: string | null;
 }
 
-export function probeMagnitApi() {
-  return probeJsonApis(magnitApiCandidates(), parseMagnitJson);
+async function searchPage(continuationToken: string | null): Promise<{ status: number; page: SearchPage | null; body: string }> {
+  const res = await fetchText(`${MAGNIT_GATEWAY}/api/jobsearch`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    timeoutMs: 10000,
+    body: JSON.stringify({
+      pageSize: pageSize(),
+      sortOption: { orderBy: "PublishedDate", direction: "Desc" },
+      ...(continuationToken ? { continuationToken } : {}),
+    }),
+  });
+  let page: SearchPage | null = null;
+  if (res.status < 400) {
+    try {
+      page = JSON.parse(res.body) as SearchPage;
+    } catch {
+      /* inte JSON */
+    }
+  }
+  return { status: res.status, page, body: res.body };
 }
 
-const HTML_PAGES = [`${MAGNIT_BASE}/`, `${MAGNIT_BASE}/jobs`];
+/** Bläddrar i sökningen med continuationToken (nyaste först). */
+async function scrapeSearch(errors: string[]): Promise<{ items: Assignment[]; pages: number; total?: number }> {
+  const seen = new Map<string, Assignment>();
+  let token: string | null = null;
+  let pages = 0;
+  let total: number | undefined;
+  do {
+    let r;
+    try {
+      r = await searchPage(token);
+    } catch (err) {
+      errors.push(`POST /api/jobsearch: ${err instanceof Error ? err.message : String(err)}`);
+      break;
+    }
+    if (!r.page) {
+      errors.push(`POST /api/jobsearch: HTTP ${r.status}`);
+      break;
+    }
+    pages++;
+    total = r.page.totalCount ?? total;
+    const items = parseMagnitJson(r.page.jobs ?? []);
+    const fresh = items.filter((a) => !seen.has(a.id));
+    fresh.forEach((a) => seen.set(a.id, a));
+    token = r.page.continuationToken ?? null;
+    if (!fresh.length || (r.page.jobs?.length ?? 0) < pageSize()) break;
+  } while (token && pages < MAX_PAGES);
+  return { items: [...seen.values()], pages, total };
+}
+
+async function landingPage(errors: string[]): Promise<Assignment[]> {
+  try {
+    const res = await fetchText(`${MAGNIT_GATEWAY}/api/jobsearch/landing-page-job-requests`, { headers: { Accept: "application/json" } });
+    if (res.status >= 400) {
+      errors.push(`landing-page-job-requests: HTTP ${res.status}`);
+      return [];
+    }
+    return parseMagnitJson(JSON.parse(res.body));
+  } catch (err) {
+    errors.push(`landing-page-job-requests: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
+}
+
+function jobId(a: Assignment): string {
+  return a.id.replace(/^magnit:/, "");
+}
+
+/** För /api/debug: provar sökningen och startsidans urval och visar vad de ger. */
+export async function probeMagnitApi(): Promise<ApiProbe[]> {
+  const out: ApiProbe[] = [];
+  try {
+    const r = await searchPage(null);
+    const jobs = r.page?.jobs ?? [];
+    const items = parseMagnitJson(jobs);
+    out.push({
+      url: `POST ${MAGNIT_GATEWAY}/api/jobsearch`,
+      status: r.status,
+      bytes: r.body.length,
+      items: items.length,
+      sample: `totalCount=${r.page?.totalCount} continuationToken=${r.page?.continuationToken ? "ja" : "nej"} svenska på sidan=${items.filter(isSwedish).length}`,
+      firstKeys: jobs[0] && typeof jobs[0] === "object" ? Object.keys(jobs[0] as object) : undefined,
+      firstItem: items.find(isSwedish) ?? items[0],
+    });
+  } catch (err) {
+    out.push({ url: `POST ${MAGNIT_GATEWAY}/api/jobsearch`, status: err instanceof Error ? err.message : String(err), bytes: 0, items: 0 });
+  }
+  const landing = await landingPage([]);
+  out.push({ url: `${MAGNIT_GATEWAY}/api/jobsearch/landing-page-job-requests`, status: landing.length ? 200 : "fel", bytes: 0, items: landing.length, firstItem: landing[0] });
+  return out;
+}
 
 export const magnit: SourceAdapter = {
   name: "Magnit",
-  homepage: MAGNIT_BASE,
+  homepage: "https://magnit-source.magnitglobal.com/",
 
   async fetchAssignments() {
     const strategies: string[] = [];
     const errors: string[] = [];
     const byId = new Map<string, Assignment>();
-    const add = (items: Assignment[]) => {
-      for (const it of items) byId.set(it.id, { ...it, ...byId.get(it.id) } as Assignment);
-    };
 
-    // 1) JSON-API och 2) HTML-sidor parallellt.
-    const [api, ...htmlPages] = await Promise.all([
-      scrapeJsonApi(magnitApiCandidates(), parseMagnitJson, { maxPages: MAX_PAGES, errors }),
-      ...HTML_PAGES.map((url) =>
-        fetchText(url)
-          .then((r) => (r.status < 400 ? parseMagnitHtml(r.body, r.url) : (errors.push(`HTTP ${r.status} från ${new URL(url).pathname}`), [])))
-          .catch((err) => (errors.push(`${new URL(url).pathname}: ${err instanceof Error ? err.message : String(err)}`), [] as Assignment[])),
-      ),
-    ]);
-    if (api.items.length) {
-      add(api.items);
-      strategies.push(`API ${api.via} (${api.pages} sid): ${api.items.length}`);
-    }
-    const html = htmlPages.flat();
-    if (html.length) {
-      add(html);
-      strategies.push(`HTML: ${html.length}`);
-    }
+    // 1) Sökningen (alla länder, nyaste först).
+    const search = await scrapeSearch(errors);
+    for (const a of search.items) byId.set(a.id, a);
+    if (search.items.length) strategies.push(`sökning (${search.pages} sid, ${search.items.length} av ${search.total ?? "?"})`);
 
-    // 3) Sitemap, bara om inget annat gav uppdrag.
+    // 2) Startsidans urval som reserv.
     if (!byId.size) {
-      const fromSitemap = [...(await urlsFromSitemaps(MAGNIT_BASE, extractMagnitId, { errors, prefer: /job|request|posting/i }))].slice(
-        0,
-        MAX_FROM_SITEMAP,
-      );
-      for (const [id, url] of fromSitemap) byId.set(`magnit:${id}`, { id: `magnit:${id}`, source: "Magnit", title: "", url });
-      if (fromSitemap.length) strategies.push(`sitemap: ${fromSitemap.length}`);
+      const landing = await landingPage(errors);
+      for (const a of landing) byId.set(a.id, a);
+      if (landing.length) strategies.push(`startsidan: ${landing.length}`);
     }
 
     if (byId.size === 0) {
       throw new Error(errors.length ? `Kunde inte hämta uppdrag från Magnit Source (${errors[0]})` : "Inga uppdrag hittades på Magnit Source.");
     }
 
-    // Filtrera fram Sverige innan detaljsidor hämtas.
-    const beforeFilter = byId.size;
+    // Bara Sverige (om inte MAGNIT_ALL_COUNTRIES=1).
+    const before = byId.size;
     if (!ALL_COUNTRIES) for (const [id, a] of byId) if (!isSwedish(a)) byId.delete(id);
-    if (beforeFilter !== byId.size) strategies.push(`utanför Sverige bortfiltrerade: ${beforeFilter - byId.size}`);
+    if (before !== byId.size) strategies.push(`utanför Sverige bortfiltrerade: ${before - byId.size}`);
 
-    // 4) Detaljsidor för uppdrag utan titel eller beskrivning.
-    const toEnrich = [...byId.values()]
-      .filter((a) => !a.title || (a.description?.length ?? 0) < 200)
-      .sort((a, b) => Number(!b.title) - Number(!a.title))
-      .slice(0, MAX_DETAIL_FETCHES);
+    // 3) Detaljer (beskrivning m.m.) via API:t för de uppdrag som återstår.
+    const toEnrich = [...byId.values()].filter((a) => (a.description?.length ?? 0) < 200).slice(0, MAX_DETAIL_FETCHES);
     let enriched = 0;
-    await mapLimit(toEnrich, 8, async (a) => {
+    await mapLimit(toEnrich, 6, async (a) => {
       try {
-        const res = await fetchText(a.url, { timeoutMs: 6000, revalidate: 6 * 3600 });
+        const res = await fetchText(`${MAGNIT_GATEWAY}/api/jobsearch/${encodeURIComponent(jobId(a))}/details`, {
+          headers: { Accept: "application/json" },
+          timeoutMs: 6000,
+          revalidate: 6 * 3600,
+        });
         if (res.status >= 400) return;
-        const d = parseMagnitDetail(res.body);
+        const d = parseMagnitJson(JSON.parse(res.body))[0];
+        if (!d) return;
         const cur = byId.get(a.id)!;
         byId.set(a.id, {
+          ...d,
           ...cur,
-          title: cur.title || d.title || "",
-          company: cur.company ?? d.company,
-          location: cur.location ?? d.location,
-          country: cur.country ?? d.country,
-          published: cur.published ?? d.published,
-          deadline: cur.deadline ?? d.deadline,
-          start: cur.start ?? d.start,
-          end: cur.end ?? d.end,
           description: (d.description?.length ?? 0) > (cur.description?.length ?? 0) ? d.description : cur.description,
         });
         enriched++;
       } catch {
-        /* detaljsidan är frivillig */
+        /* detaljerna är frivilliga */
       }
     });
-    if (enriched) strategies.push(`detaljsidor: ${enriched}`);
+    if (enriched) strategies.push(`detaljer: ${enriched}`);
 
     const today = new Date().toISOString().slice(0, 10);
-    const all = [...byId.values()].filter((a) => ALL_COUNTRIES || isSwedish(a));
+    const all = [...byId.values()];
     const expired = all.filter((a) => a.deadline && a.deadline < today).length;
     if (expired) strategies.push(`utgångna bortfiltrerade: ${expired}`);
     return { assignments: all.filter((a) => a.title && !(a.deadline && a.deadline < today)), strategies };

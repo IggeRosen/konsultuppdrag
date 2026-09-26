@@ -104,3 +104,60 @@ test("scrapeJsonApi: faller tillbaka på andra kandidaten och bläddrar", async 
     globalThis.fetch = original;
   }
 });
+
+// Riktigt svar från app-openmarketgateway-prod.azurewebsites.net/api/jobsearch/landing-page-job-requests (2026-09-26, förkortat).
+const REAL_LANDING = [
+  {
+    id: "eab154c5-c4fd-1dc5-8b26-9e39457965ca",
+    title: "Test Lead/Manager Level 4",
+    billRate: { amount: null, currencySymbol: "kr", frequency: "Per Hour" },
+    location: "Stockholm, SWE",
+    company: "SEB",
+    startDate: "2026-11-16T00:00:00+00:00",
+    submissionDeadline: "2026-10-11T00:00:00+00:00",
+    workLocationType: null,
+    clientInfo: { name: "Client of Magnit", opUnitName: "Client of Magnit", rateType: 1, terms: null },
+    status: 4,
+  },
+  {
+    id: "5c7194a3-80c8-ba44-d5a0-e1b0c3a30a1e",
+    title: "Kravanalytiker/ verksamhetsanalytiker - Nivå 3 (IT)",
+    billRate: { amount: 706, currencySymbol: "kr", frequency: "Hourly" },
+    location: "Stockholm, SWE",
+    company: "-",
+    startDate: "2026-10-24T23:00:00+00:00",
+    submissionDeadline: "2026-10-11T23:00:00+00:00",
+    workLocationType: null,
+    clientInfo: { name: "Public Transport sector", opUnitName: "Public Transport sector", rateType: 1 },
+    status: 4,
+  },
+  {
+    id: "134bfe4d-4f3b-4ff8-a1ff-ecd7f0994d9d",
+    title: "Administratief Medewerker",
+    billRate: { amount: 55, currencySymbol: "€", frequency: "Per Hour" },
+    location: "'S-Hertogenbosch, NLD",
+    company: "Gemeente 's-Hertogenbosch",
+    startDate: "2026-10-01T00:00:00+00:00",
+    submissionDeadline: "2026-09-30T00:00:00+00:00",
+    status: 4,
+  },
+];
+
+test("riktigt svar från Magnit Sources API", () => {
+  const items = parseMagnitJson(REAL_LANDING);
+  assert.equal(items.length, 3);
+  const [seb, krav, nl] = items;
+  assert.equal(seb.company, "SEB");
+  assert.equal(seb.location, "Stockholm");
+  assert.equal(seb.country, "SWE");
+  assert.equal(seb.rate, undefined, "amount: null ger inget pris");
+  assert.equal(seb.start, "2026-11-16");
+  assert.equal(seb.deadline, "2026-10-11");
+  assert.equal(krav.company, "Public Transport sector", "'-' ersätts med clientInfo.name");
+  assert.equal(krav.rate, "706 kr/tim");
+  assert.equal(krav.start, "2026-10-25", "23:00 UTC är nästa dag i svensk tid");
+  assert.equal(krav.deadline, "2026-10-12");
+  assert.equal(nl.rate, "55 EUR/tim");
+  assert.equal(nl.country, "NLD");
+  assert.deepEqual(items.filter(isSwedish).map((a) => a.title), [seb.title, krav.title]);
+});

@@ -7,7 +7,8 @@ import { swedishPlace } from "./cinode-parse.ts";
 export type Obj = Record<string, unknown>;
 
 export function str(v: unknown): string | undefined {
-  if (typeof v === "string" && v.trim()) return clean(v.replace(/<[^>]+>/g, " "));
+  // "-" och liknande betyder "anges inte".
+  if (typeof v === "string" && v.trim() && !/^[\s\-–—.]*$/.test(v)) return clean(v.replace(/<[^>]+>/g, " "));
   if (typeof v === "number") return String(v);
   return undefined;
 }
@@ -17,9 +18,15 @@ export function first(o: Obj, keys: string[]): unknown {
   return undefined;
 }
 
+/** Datum som "ÅÅÅÅ-MM-DD". Tidsstämplar med tidszon räknas om till svensk tid. */
 export function isoDate(v: unknown): string | undefined {
   const s = typeof v === "number" ? new Date(v > 1e12 ? v : v * 1000).toISOString() : str(v);
-  return s?.match(/20\d{2}-\d{2}-\d{2}/)?.[0];
+  if (!s) return undefined;
+  if (/^20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+  }
+  return s.match(/20\d{2}-\d{2}-\d{2}/)?.[0];
 }
 
 export function nameOf(v: unknown): string | undefined {
@@ -63,7 +70,7 @@ function workModeOf(o: Obj): string | undefined {
     if (n >= 100) return "Distans";
     return `Hybrid · ${Math.round(n)} % distans`;
   }
-  const mode = str(first(o, ["remote", "workMode", "workplaceType", "remoteType"]));
+  const mode = str(first(o, ["remote", "workMode", "workplaceType", "remoteType", "workLocationType"]));
   if (!mode) return undefined;
   if (/^(true|remote|fully.?remote|distans)$/i.test(mode)) return "Distans";
   if (/^(false|onsite|on.?site|office)$/i.test(mode)) return "På plats";
@@ -90,7 +97,7 @@ function num(v: unknown): number | undefined {
  * `rate: { min: 700, max: 900 }` eller `rate: { value: { amount } }`.
  */
 export function rateOf(o: Obj): string | undefined {
-  const raw = first(o, ["rate", "hourlyRate", "price", "maxRate", "rateMax"]);
+  const raw = first(o, ["rate", "billRate", "hourlyRate", "price", "maxRate", "rateMax"]);
   let min: number | undefined;
   let max: number | undefined;
   let currency = str(first(o, ["currency", "rateCurrency"]));
@@ -100,14 +107,16 @@ export function rateOf(o: Obj): string | undefined {
     const inner = (r.value && typeof r.value === "object" ? r.value : r) as Obj;
     max = num(first(inner, ["maxRate", "max", "maxAmount", "to", "amount", "value", "price", "hourlyRate"]));
     min = num(first(inner, ["minRate", "min", "minAmount", "from"]));
-    currency = str(first(inner, ["currency", "currencyCode"])) ?? str(first(r, ["currency", "currencyCode"])) ?? currency;
-    const per = str(first(r, ["unit", "type", "period", "rateType"]));
+    currency =
+      str(first(inner, ["currency", "currencyCode", "currencySymbol"])) ?? str(first(r, ["currency", "currencyCode", "currencySymbol"])) ?? currency;
+    const per = str(first(r, ["unit", "type", "period", "rateType", "frequency"]));
     if (per && /month|månad/i.test(per)) unit = "mån";
   } else {
     max = num(raw);
   }
   if (!max && !min) return undefined;
-  const cur = !currency || /^(SEK|kr)$/i.test(currency) ? "kr" : currency.toUpperCase();
+  const symbols: Record<string, string> = { "€": "EUR", $: "USD", "£": "GBP" };
+  const cur = !currency || /^(SEK|kr)$/i.test(currency) ? "kr" : (symbols[currency] ?? currency.toUpperCase());
   const amount = min && max && min !== max ? `${min}–${max}` : String(max ?? min);
   return `${amount} ${cur}/${unit}`;
 }

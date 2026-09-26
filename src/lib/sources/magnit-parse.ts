@@ -1,7 +1,8 @@
 import * as cheerio from "cheerio";
 import type { Assignment } from "../types.ts";
 import { cardFields, clean, extractJobPosting, findCards, findJsonBlobs, spacedText, stripEmpty, walk } from "../parse-utils.ts";
-import { mapJobObject, str, type Obj } from "./job-json.ts";
+import { isoDate, mapJobObject, str, type Obj } from "./job-json.ts";
+import { swedishPlace } from "./cinode-parse.ts";
 
 // Magnit publicerar alla sina uppdrag öppet på marknadsplatsen Magnit Source:
 //   https://magnit-source.magnitglobal.com/
@@ -36,11 +37,35 @@ export function magnitUrl(id: string, o?: Obj): string {
 
 const OPTS = { source: "Magnit", prefix: "magnit", urlFor: magnitUrl, stringIds: true };
 
+// Kundnamn som bara betyder "Magnits kund" och inte säger något.
+const PLACEHOLDER_CLIENTS = /^(client of magnit|magnit|confidential|konfidentiell)$/i;
+
+/**
+ * Magnit-specifika fält ovanpå den generella mappningen:
+ * "Stockholm, SWE" → ort + land, submissionDeadline, kund ur clientInfo när company är "-".
+ */
+function mapMagnitJob(o: Obj): Assignment | null {
+  const a = mapJobObject(o, OPTS);
+  if (!a) return null;
+  const loc = str(o.location)?.match(/^(.*?),\s*([A-Z]{2,3})$/);
+  if (loc) {
+    a.location = swedishPlace(loc[1].replace(/^'/, "").trim());
+    a.country = loc[2];
+  }
+  a.deadline = a.deadline ?? isoDate(o.submissionDeadline);
+  if (!a.company || PLACEHOLDER_CLIENTS.test(a.company)) {
+    const client = o.clientInfo && typeof o.clientInfo === "object" ? str((o.clientInfo as Obj).name) : undefined;
+    a.company = client && !PLACEHOLDER_CLIENTS.test(client) ? client : undefined;
+    if (!a.company) delete a.company;
+  }
+  return a;
+}
+
 /** Alla uppdrag i ett godtyckligt JSON-svar. */
 export function parseMagnitJson(json: unknown): Assignment[] {
   const byId = new Map<string, Assignment>();
   walk(json, (node) => {
-    const a = mapJobObject(node, OPTS);
+    const a = mapMagnitJob(node);
     if (a && !byId.has(a.id)) byId.set(a.id, a);
   });
   return [...byId.values()];

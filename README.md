@@ -23,7 +23,7 @@ src/lib/sources/ework.ts             Ework/Verama (JSON-API + listsida + sitemap
 src/lib/sources/ework-parse.ts       tolkning av Veramas JSON och HTML
 src/lib/sources/keyman.ts            KeyMan (listsida + sitemap + detaljsidor)
 src/lib/sources/keyman-parse.ts      tolkning av keyman.se
-src/lib/sources/magnit.ts            Magnit Source (JSON-API + HTML + sitemap + detaljsidor, Sverigefilter)
+src/lib/sources/magnit.ts            Magnit Source (POST-sökning + detaljer via API, Sverigefilter)
 src/lib/sources/magnit-parse.ts      tolkning av Magnit Source
 src/lib/sources/job-json.ts          generell tolkning av uppdragsobjekt i JSON (Verama, Magnit)
 src/lib/json-api.ts                  generell sondering och paginering av JSON-API:er
@@ -103,16 +103,19 @@ Kategorin ur adressen (t.ex. Data/IT) läggs i beskrivningen. Utgångna uppdrag 
 
 ### Magnit
 
-Magnit publicerar alla sina uppdrag öppet på [Magnit Source](https://magnit-source.magnitglobal.com/).
-Sajten är global, så appen visar bara uppdrag i Sverige (eller med okänd plats). Sätt
-`MAGNIT_ALL_COUNTRIES=1` för att visa alla. Appen läser:
+Magnit publicerar alla sina uppdrag öppet på [Magnit Source](https://magnit-source.magnitglobal.com/),
+en Angular-app som hämtar uppdragen från en separat API-server
+(`app-openmarketgateway-prod.azurewebsites.net`, kan ändras med `MAGNIT_GATEWAY_URL`).
+Anropen är tagna ur sajtens JavaScript och används av sajten utan inloggning:
 
-1. JSON-API: tänkbara adresser provas och den som svarar med uppdrag används, med paginering,
-   max `MAGNIT_MAX_PAGES` = 6. Adressen kan sättas med `MAGNIT_API_URL` (`{page}` = sidnummer från 0).
-   Se vad som svarar med `/api/debug?url=https://magnit-source.magnitglobal.com/&probe=1`.
-2. Startsidans HTML: inbäddad JSON (t.ex. `__NEXT_DATA__`) och uppdragslänkar
-3. Sitemapen, om inget annat gav uppdrag
-4. Detaljsidor för uppdrag som saknar titel eller beskrivning, max `MAGNIT_MAX_DETAILS` = 60
+1. `POST /api/jobsearch` med `{ pageSize, sortOption: { orderBy: "PublishedDate", direction: "Desc" } }`,
+   bläddras med `continuationToken` (sidstorlek `MAGNIT_PAGE_SIZE` = 100, max `MAGNIT_MAX_PAGES` = 10)
+2. `GET /api/jobsearch/landing-page-job-requests` som reserv
+3. `GET /api/jobsearch/<id>/details` för beskrivning, max `MAGNIT_MAX_DETAILS` = 40
+
+Sajten är global, så appen visar bara uppdrag i Sverige ("Stockholm, SWE") eller med okänd plats.
+Sätt `MAGNIT_ALL_COUNTRIES=1` för att visa alla. `/api/debug?url=https://magnit-source.magnitglobal.com/&probe=1`
+visar vad sökningen ger.
 
 ### Lägga till en ny portal
 
@@ -131,7 +134,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_API_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_SITEMAP`, `MAGNIT_MAX_DETAILS`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida
