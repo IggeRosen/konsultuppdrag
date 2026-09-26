@@ -3,6 +3,8 @@ import { fetchText, mapLimit } from "../http.ts";
 import { scrapePaged } from "../paging.ts";
 import { urlsFromSitemaps } from "../sitemap.ts";
 import { isSwedish } from "../sweden.ts";
+import { walk } from "../parse-utils.ts";
+import { EMAGINE_PAGE_SIZE, fixSearchBody, hasPaging, seedBodies, withPage } from "./emagine-search.ts";
 import { EMAGINE_PORTAL, emagineUrl, extractEmagineId, parseEmagineDetail, parseEmagineJson, parseEmagineListing } from "./emagine-parse.ts";
 
 // emagine publicerar uppdrag i portalen (portal.emagine.org/jobs/<id>/<titel>)
@@ -21,24 +23,17 @@ const MAX_DETAIL_FETCHES = Number(process.env.EMAGINE_MAX_DETAILS ?? 80);
 const ALL_COUNTRIES = process.env.EMAGINE_ALL_COUNTRIES === "1";
 
 // Portalens API (env.apiUrl i portalens ng-state) och sökanropet i JobAds-tjänsten
-// (chunk-MQK35HBH.js, 2026-09-26): POST /api/JobAds/Search. Förfrågans format är
-// inte känt än, så några vanliga varianter provas; EMAGINE_SEARCH_BODY kan sätta den.
+// (chunk-MQK35HBH.js, 2026-09-26): POST /api/JobAds/Search. Förfrågan kräver minst
+// Filter och Sorting; resten lärs in ur API:ts valideringsfel (emagine-search.ts).
+// EMAGINE_SEARCH_BODY kan sätta förfrågan direkt (JSON).
 export const EMAGINE_API = process.env.EMAGINE_API_URL ?? "https://portal-api.emagine.org";
 const SEARCH_URL = () => `${EMAGINE_API}/api/JobAds/Search`;
-const PAGE_SIZE = 50;
+const MAX_ROUNDS = 8;
 
-export function searchBodies(page: number): unknown[] {
-  if (process.env.EMAGINE_SEARCH_BODY) {
-    return [JSON.parse(process.env.EMAGINE_SEARCH_BODY.replace(/"\{page\}"|\{page\}/g, String(page)))];
-  }
-  return [
-    { pageNumber: page, pageSize: PAGE_SIZE },
-    { page, pageSize: PAGE_SIZE },
-    { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE },
-    { pageIndex: page - 1, pageSize: PAGE_SIZE },
-    { paging: { pageNumber: page, pageSize: PAGE_SIZE } },
-    {},
-  ];
+type Json = Record<string, unknown>;
+
+function startBodies(): Json[] {
+  return process.env.EMAGINE_SEARCH_BODY ? [JSON.parse(process.env.EMAGINE_SEARCH_BODY) as Json] : seedBodies();
 }
 
 async function postSearch(body: unknown) {
@@ -57,65 +52,83 @@ async function postSearch(body: unknown) {
   return { status: res.status, json, items: json && res.status < 400 ? parseEmagineJson(json) : [], body: res.body };
 }
 
-/** För /api/debug: provar sökanropet med olika förfrågningar och visar svaren (även felmeddelanden). */
+type Round = { body: Json; status: number | string; errors?: unknown; items: number; bytes?: number };
+
+/** Postar, och kompletterar förfrågan utifrån valideringsfelen tills svaret är OK. */
+async function discover(seed: Json): Promise<{ body: Json; rounds: Round[]; result?: Awaited<ReturnType<typeof postSearch>> }> {
+  let body = seed;
+  const rounds: Round[] = [];
+  for (let i = 0; i < MAX_ROUNDS; i++) {
+    let r;
+    try {
+      r = await postSearch(body);
+    } catch (err) {
+      rounds.push({ body, status: err instanceof Error ? err.message : String(err), items: 0 });
+      return { body, rounds };
+    }
+    const errs = r.json && typeof r.json === "object" ? (r.json as Json).errors : undefined;
+    rounds.push({ body, status: r.status, errors: errs, items: r.items.length, bytes: r.body.length });
+    if (r.status < 400) return { body, rounds, result: r };
+    const next = errs && typeof errs === "object" ? fixSearchBody(body, errs as Json) : null;
+    if (!next) return { body, rounds };
+    body = next;
+  }
+  return { body, rounds };
+}
+
+function firstObjectKeys(json: unknown): string[] | undefined {
+  let keys: string[] | undefined;
+  walk(json, (n) => {
+    if (!keys && Object.keys(n).length >= 4 && Object.keys(n).some((k) => /title|name/i.test(k))) keys = Object.keys(n);
+  });
+  return keys;
+}
+
+/** För /api/debug: visar varje steg i inlärningen av förfrågan och det slutliga svaret. */
 export async function probeEmagineApi() {
   return Promise.all(
-    searchBodies(1).map(async (body) => {
-      try {
-        const r = await postSearch(body);
-        return {
-          url: `POST ${SEARCH_URL()} ${JSON.stringify(body)}`,
-          status: r.status,
-          bytes: r.body.length,
-          items: r.items.length,
-          topLevelKeys: r.json && typeof r.json === "object" && !Array.isArray(r.json) ? Object.keys(r.json) : undefined,
-          firstItem: r.items[0],
-          sample: r.body.slice(0, 1200),
-        };
-      } catch (err) {
-        return { url: `POST ${SEARCH_URL()} ${JSON.stringify(body)}`, status: err instanceof Error ? err.message : String(err), bytes: 0, items: 0 };
-      }
+    startBodies().map(async (seed) => {
+      const d = await discover(seed);
+      const r = d.result;
+      return {
+        url: `POST ${SEARCH_URL()}`,
+        finalBody: d.body,
+        status: d.rounds.at(-1)?.status,
+        items: r?.items.length ?? 0,
+        rounds: d.rounds,
+        topLevelKeys: r?.json && typeof r.json === "object" && !Array.isArray(r.json) ? Object.keys(r.json) : undefined,
+        firstRawKeys: r ? firstObjectKeys(r.json) : undefined,
+        firstItem: r?.items[0],
+        sample: r?.body.slice(0, 2500),
+      };
     }),
   );
 }
 
-/** Söker med den första förfrågningsvariant som ger uppdrag, och bläddrar. */
+/** Söker med den första förfrågan som ger uppdrag, och bläddrar. */
 async function scrapeSearch(errors: string[]): Promise<{ items: Assignment[]; pages: number; via: string }> {
-  const bodies = searchBodies(1);
-  let idx = -1;
-  let first: Assignment[] = [];
-  const statuses: (number | string)[] = [];
-  for (let i = 0; i < bodies.length; i++) {
-    try {
-      const r = await postSearch(bodies[i]);
-      statuses.push(r.status);
-      if (r.items.length) {
-        idx = i;
-        first = r.items;
+  const statuses: (number | string | undefined)[] = [];
+  for (const seed of startBodies()) {
+    const d = await discover(seed);
+    statuses.push(d.rounds.at(-1)?.status);
+    if (!d.result?.items.length) continue;
+    const seen = new Map(d.result.items.map((a) => [a.id, a]));
+    let pages = 1;
+    for (let page = 2; page <= MAX_PAGES && hasPaging(d.body) && d.result.items.length >= EMAGINE_PAGE_SIZE / 2; page++) {
+      try {
+        const r = await postSearch(withPage(d.body, page));
+        const fresh = r.items.filter((a) => !seen.has(a.id));
+        if (!fresh.length) break;
+        fresh.forEach((a) => seen.set(a.id, a));
+        pages++;
+      } catch {
         break;
       }
-    } catch (err) {
-      statuses.push(err instanceof Error ? err.message : "fel");
     }
+    return { items: [...seen.values()], pages, via: JSON.stringify(d.body) };
   }
-  if (idx < 0) {
-    errors.push(`POST /api/JobAds/Search: inga uppdrag (${statuses.join(", ")})`);
-    return { items: [], pages: 0, via: "" };
-  }
-  const seen = new Map(first.map((a) => [a.id, a]));
-  let pages = 1;
-  for (let page = 2; page <= MAX_PAGES && first.length >= PAGE_SIZE / 2; page++) {
-    try {
-      const r = await postSearch(searchBodies(page)[idx]);
-      const fresh = r.items.filter((a) => !seen.has(a.id));
-      if (!fresh.length) break;
-      fresh.forEach((a) => seen.set(a.id, a));
-      pages++;
-    } catch {
-      break;
-    }
-  }
-  return { items: [...seen.values()], pages, via: JSON.stringify(bodies[idx]) };
+  errors.push(`POST /api/JobAds/Search: inga uppdrag (${statuses.join(", ")})`);
+  return { items: [], pages: 0, via: "" };
 }
 
 export const emagine: SourceAdapter = {
