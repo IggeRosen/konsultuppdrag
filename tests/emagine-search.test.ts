@@ -1,7 +1,7 @@
 // Felsvaret nedan är riktigt (POST https://portal-api.emagine.org/api/JobAds/Search, 2026-09-26).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { errorPath, fixSearchBody, hasPaging, withPage } from "../src/lib/sources/emagine-search.ts";
+import { errorPath, fixSearchBody, hasPaging, seedBodies, withPage } from "../src/lib/sources/emagine-search.ts";
 
 test("felnycklar blir sökvägar", () => {
   assert.deepEqual(errorPath("Filter"), ["filter"]);
@@ -21,7 +21,7 @@ test("inre fält och typfel", () => {
     "Sorting.SortBy": ["The SortBy field is required."],
     "$.sorting.direction": ["The JSON value could not be converted to System.Int32. Path: $.sorting.direction"],
   });
-  assert.deepEqual(next, { filter: { pageSize: 50 }, sorting: { sortBy: "", direction: 0 } });
+  assert.deepEqual(next, { filter: { pageSize: 100 }, sorting: { sortBy: "", direction: 0 } });
   // Samma fel igen på ett fält som redan har värdet → prova en annan typ.
   const again = fixSearchBody({ sorting: { direction: 0 } }, { "$.sorting.direction": ["The JSON value could not be converted to Emagine.SortDirection."] });
   assert.deepEqual(again, { sorting: { direction: {} } });
@@ -34,4 +34,11 @@ test("sidbyte", () => {
   assert.deepEqual(withPage({ paging: { skip: 0, take: 25 } }, 3), { paging: { skip: 50, take: 25 } });
   assert.equal(hasPaging({ filter: {}, sorting: {} }), false);
   assert.equal(hasPaging({ filter: { pageIndex: 0 } }), true);
+});
+
+test("portalens förfrågan och bläddring med skipCount", () => {
+  const [seed] = seedBodies();
+  assert.equal(seed.sorting, "CreationTime desc");
+  assert.equal(hasPaging(seed), true);
+  assert.deepEqual(withPage(seed, 3), { ...seed, skipCount: 200 });
 });

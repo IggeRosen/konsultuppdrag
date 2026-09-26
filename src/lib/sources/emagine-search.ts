@@ -7,20 +7,23 @@
 
 type Json = Record<string, unknown>;
 
-export const EMAGINE_PAGE_SIZE = 50;
+export const EMAGINE_PAGE_SIZE = 100; // portalens största sidstorlek (pageSizeOptions 20/50/100)
 
 const PAGE_KEY = /^(page|pageNumber|pageNo|currentPage)$/i;
 const PAGE_INDEX_KEY = /^(pageIndex)$/i;
-const SIZE_KEY = /^(pageSize|size|take|limit|perPage|count|itemsPerPage)$/i;
-const SKIP_KEY = /^(skip|offset|from|start)$/i;
+const SIZE_KEY = /^(pageSize|size|take|limit|perPage|count|itemsPerPage|maxResultCount)$/i;
+const SKIP_KEY = /^(skip|skipCount|offset|from|start)$/i;
 
-/** Startförfrågningar: de fält API:t sagt krävs, plus några gissningar på sortering. */
+/**
+ * Startförfrågningar. Formatet är portalens eget (proxySearchAllJobs i
+ * chunk-CU2XS2X6.js, 2026-09-26): { skipCount, maxResultCount, sorting, filter,
+ * supportedLanguageId }, där sorting är t.ex. "CreationTime desc" (NewestFirst i
+ * chunk-JD6HBCB5.js). Filtrets fält och språkets id är inte kända; saknas något
+ * som krävs kompletteras det ur valideringsfelen.
+ */
 export function seedBodies(): Json[] {
-  return [
-    { filter: {}, sorting: {}, pageNumber: 1, pageSize: EMAGINE_PAGE_SIZE },
-    { filter: {}, sorting: { field: "PublishedDate", direction: "Desc" }, pageNumber: 1, pageSize: EMAGINE_PAGE_SIZE },
-    { filter: {}, sorting: [], paging: { pageNumber: 1, pageSize: EMAGINE_PAGE_SIZE } },
-  ];
+  const base = { skipCount: 0, maxResultCount: EMAGINE_PAGE_SIZE, sorting: "CreationTime desc", filter: {} };
+  return [{ ...base, supportedLanguageId: 1 }, base];
 }
 
 const camel = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);

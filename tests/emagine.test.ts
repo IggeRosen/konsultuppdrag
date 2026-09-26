@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   emagineFieldsFromText,
+  emagineSlug,
   emagineUrl,
   extractEmagineId,
   isClosed,
@@ -60,7 +61,7 @@ test("listsida: kort och Sverigefilter", () => {
 test("JSON (t.ex. API eller __NEXT_DATA__)", () => {
   const items = parseEmagineJson({ data: [{ id: 181000, title: "Scrum Master", location: { city: "Malmö", country: "SE" }, startDate: "2026-12-01" }] });
   assert.equal(items[0].id, "emagine:181000");
-  assert.equal(items[0].url, "https://portal.emagine.org/jobs/181000");
+  assert.equal(items[0].url, "https://portal.emagine.org/jobs/181000/scrum-master");
   assert.equal(items[0].country, "SE");
 });
 
@@ -75,4 +76,11 @@ test("detaljsida och stängda uppdrag", () => {
   assert.equal(d.closed, undefined);
   assert.equal(isClosed("This job is no longer accepting applications"), true);
   assert.equal(parseEmagineDetail(open.replace("<main>", "<main><p>No longer accepting applications</p>")).closed, true);
+});
+
+test("slug och adress som portalen", () => {
+  assert.equal(emagineSlug("2 Systemutvecklare med AI-kompetens inom vården"), "2-systemutvecklare-med-ai-kompetens-inom-vrden");
+  assert.equal(emagineUrl("179236", undefined, "2 Systemutvecklare med AI-kompetens inom vården"), "https://portal.emagine.org/jobs/179236/2-systemutvecklare-med-ai-kompetens-inom-vrden");
+  const [a] = parseEmagineJson({ totalCount: 1, items: [{ id: 179236, title: "Senior Java-utvecklare", location: "Stockholm", description: "Vi söker en utvecklare." }] });
+  assert.equal(a.url, "https://portal.emagine.org/jobs/179236/senior-java-utvecklare");
 });

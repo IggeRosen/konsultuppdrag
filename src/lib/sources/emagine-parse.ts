@@ -22,8 +22,19 @@ export function extractEmagineId(href: string): string | null {
   return href.match(JOB_RE)?.[1] ?? null;
 }
 
-/** Kanonisk adress: uppdragssidan i portalen. */
-export function emagineUrl(id: string, href?: string): string {
+/** Portalens egen slug-funktion (chunk-JD6HBCB5.js): "2 Systemutvecklare!" → "2-systemutvecklare". */
+export function emagineSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/** Kanonisk adress: uppdragssidan i portalen (/jobs/<id>/<slug>). */
+export function emagineUrl(id: string, href?: string, title?: string): string {
   if (href) {
     try {
       const u = new URL(href, EMAGINE_PORTAL);
@@ -32,7 +43,8 @@ export function emagineUrl(id: string, href?: string): string {
       /* ogiltig länk */
     }
   }
-  return `${EMAGINE_PORTAL}/jobs/${id}`;
+  const slug = title ? emagineSlug(title) : "";
+  return `${EMAGINE_PORTAL}/jobs/${id}${slug ? `/${slug}` : ""}`;
 }
 
 /** "2 Systemutvecklare … • emagine Portal" → "2 Systemutvecklare …" */
@@ -45,7 +57,12 @@ export function parseEmagineTitle(raw: string): string | undefined {
   return t;
 }
 
-const OPTS = { source: "emagine", prefix: "emagine", urlFor: (id: string, o: Obj) => emagineUrl(id, typeof o.url === "string" ? o.url : undefined) };
+const OPTS = {
+  source: "emagine",
+  prefix: "emagine",
+  urlFor: (id: string, o: Obj) =>
+    emagineUrl(id, typeof o.url === "string" ? o.url : undefined, [o.title, o.jobTitle, o.name].find((t): t is string => typeof t === "string")),
+};
 
 /** Uppdrag i godtycklig JSON (API-svar eller inbäddad data). */
 export function parseEmagineJson(json: unknown): Assignment[] {
