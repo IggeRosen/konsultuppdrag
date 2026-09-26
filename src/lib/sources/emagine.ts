@@ -39,7 +39,14 @@ function startBodies(): Json[] {
 async function postSearch(body: unknown) {
   const res = await fetchText(SEARCH_URL(), {
     method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    // Samma headers som webbläsaren skickar från portalen.
+    headers: {
+      Accept: "application/json, text/plain, */*",
+      "Content-Type": "application/json",
+      Origin: EMAGINE_PORTAL,
+      Referer: `${EMAGINE_PORTAL}/jobs`,
+      "Accept-Language": "en-US,en;q=0.9",
+    },
     body: JSON.stringify(body),
     timeoutMs: 8000,
   });
