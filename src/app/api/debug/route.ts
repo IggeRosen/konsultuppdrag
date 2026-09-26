@@ -132,7 +132,9 @@ export async function GET(req: Request) {
               batch.map(async (c) => {
                 try {
                   const r = await fetchText(c, { revalidate: 3600, timeoutMs: 8000 });
-                  return { chunk: c, body: r.status < 400 ? r.body : "" };
+                  // Hoppa över HTML (servern svarar med appens startsida för okända adresser).
+                  const isHtml = /html/i.test(r.headers["content-type"] ?? "") || /^\s*<(!doctype|html)/i.test(r.body);
+                  return { chunk: c, body: r.status < 400 && !isHtml ? r.body : "" };
                 } catch {
                   return { chunk: c, body: "" };
                 }
