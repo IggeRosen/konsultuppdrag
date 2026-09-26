@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan** och **Magnit** (Magnit Source).
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source) och **emagine**.
 
 ## Funktioner
 
@@ -25,6 +25,9 @@ src/lib/sources/keyman.ts            KeyMan (listsida + sitemap + detaljsidor)
 src/lib/sources/keyman-parse.ts      tolkning av keyman.se
 src/lib/sources/magnit.ts            Magnit Source (POST-sökning + detaljer via API, Sverigefilter)
 src/lib/sources/magnit-parse.ts      tolkning av Magnit Source
+src/lib/sources/emagine.ts           emagine (listsidor + API + sitemap + detaljsidor, Sverigefilter)
+src/lib/sources/emagine-parse.ts     tolkning av emagines portal och landssajter
+src/lib/sweden.ts                    Sverigefilter för källor med uppdrag i flera länder
 src/lib/sources/job-json.ts          generell tolkning av uppdragsobjekt i JSON (Verama, Magnit)
 src/lib/json-api.ts                  generell sondering och paginering av JSON-API:er
 src/lib/sitemap.ts                   delad sitemap-läsning
@@ -117,6 +120,19 @@ Sajten är global, så appen visar bara uppdrag i Sverige ("Stockholm, SWE") ell
 Sätt `MAGNIT_ALL_COUNTRIES=1` för att visa alla. `/api/debug?url=https://magnit-source.magnitglobal.com/&probe=1`
 visar vad sökningen ger.
 
+### emagine
+
+emagine publicerar uppdrag för frilanskonsulter i sin portal (`portal.emagine.org/jobs/<id>/<titel>`)
+och listar dem på landssajterna, t.ex. [emagine-consulting.se](https://emagine-consulting.se/consultants/freelance-jobs/).
+emagine finns i flera länder, så appen visar bara uppdrag i Sverige (eller med okänd plats);
+`EMAGINE_ALL_COUNTRIES=1` visar alla. Appen läser:
+
+1. Listsidorna på emagine-consulting.se, portal.emagine.org och emagine.org, med paginering (max `EMAGINE_MAX_PAGES` = 10)
+2. Tänkbara JSON-API:er i portalen (`EMAGINE_API_URL` kan sättas)
+3. Sitemaparna: de nyaste uppdragen, max `EMAGINE_MAX_SITEMAP` = 60
+4. Detaljsidor: titel ("Titel • emagine Portal"), JSON-LD, plats, start, deadline, distans och beskrivning;
+   uppdrag som inte längre tar emot ansökningar filtreras bort. Max `EMAGINE_MAX_DETAILS` = 80
+
 ### Lägga till en ny portal
 
 Skapa `src/lib/sources/<portal>.ts` som exporterar en `SourceAdapter`
@@ -134,7 +150,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida

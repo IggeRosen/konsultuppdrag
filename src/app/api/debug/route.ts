@@ -11,6 +11,8 @@ import { probeEworkApi } from "@/lib/sources/ework";
 import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
 import { extractMagnitId, MAGNIT_GATEWAY, parseMagnitDetail, parseMagnitHtml, parseMagnitJson } from "@/lib/sources/magnit-parse";
 import { probeMagnitApi } from "@/lib/sources/magnit";
+import { extractEmagineId, parseEmagineDetail, parseEmagineJson, parseEmagineListing } from "@/lib/sources/emagine-parse";
+import { probeEmagineApi } from "@/lib/sources/emagine";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -21,6 +23,8 @@ const SITES = [
   { host: "eworkgroup.com", parse: parseVeramaHtml, extractId: extractVeramaId, json: parseVeramaJson },
   { host: "keyman.se", parse: parseKeymanListing, extractId: extractKeymanId },
   { host: "magnitglobal.com", parse: parseMagnitHtml, extractId: extractMagnitId },
+  { host: "emagine.org", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
+  { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
 ];
@@ -187,10 +191,19 @@ export async function GET(req: Request) {
     ].slice(0, 60);
 
     const isVerama = site.host === "verama.com" || site.host === "eworkgroup.com";
-    const cursor = site.host === "brainville.com" || isVerama || site.host === "magnitglobal.com" ? null : extractNextCursor(res.body, res.headers);
+    const cursor = site.host === "brainville.com" || isVerama || site.host === "magnitglobal.com" || site.host.includes("emagine") ? null : extractNextCursor(res.body, res.headers);
     const isMagnit = site.host === "magnitglobal.com";
+    const isEmagine = site.host === "emagine.org" || site.host === "emagine-consulting.se";
     const apiProbe =
-      params.get("probe") === "1" ? (isVerama ? await probeEworkApi() : isMagnit ? await probeMagnitApi() : undefined) : undefined;
+      params.get("probe") === "1"
+        ? isVerama
+          ? await probeEworkApi()
+          : isMagnit
+            ? await probeMagnitApi()
+            : isEmagine
+              ? await probeEmagineApi()
+              : undefined
+        : undefined;
     const loadMoreProbe =
       cursor && params.get("probe") === "1"
         ? await probeLoadMore(res.url, cursor, new Set(items.map((a) => a.id)))
@@ -206,7 +219,11 @@ export async function GET(req: Request) {
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: site.host === "magnitglobal.com"
+      detail: isEmagine
+        ? extractEmagineId(res.url)
+          ? parseEmagineDetail(res.body)
+          : undefined
+        : site.host === "magnitglobal.com"
         ? extractMagnitId(res.url)
           ? parseMagnitDetail(res.body)
           : undefined
