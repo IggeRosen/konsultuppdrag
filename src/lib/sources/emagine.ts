@@ -1,6 +1,5 @@
 import type { Assignment, SourceAdapter } from "../types.ts";
 import { fetchText, mapLimit } from "../http.ts";
-import { probeJsonApis, scrapeJsonApi } from "../json-api.ts";
 import { scrapePaged } from "../paging.ts";
 import { urlsFromSitemaps } from "../sitemap.ts";
 import { isSwedish } from "../sweden.ts";
@@ -21,24 +20,102 @@ const MAX_DETAIL_FETCHES = Number(process.env.EMAGINE_MAX_DETAILS ?? 80);
 // Sätt EMAGINE_ALL_COUNTRIES=1 för att visa uppdrag i alla länder.
 const ALL_COUNTRIES = process.env.EMAGINE_ALL_COUNTRIES === "1";
 
-export function emagineApiCandidates(): string[] {
-  const q = "page={page}&pageSize=50";
+// Portalens API (env.apiUrl i portalens ng-state) och sökanropet i JobAds-tjänsten
+// (chunk-MQK35HBH.js, 2026-09-26): POST /api/JobAds/Search. Förfrågans format är
+// inte känt än, så några vanliga varianter provas; EMAGINE_SEARCH_BODY kan sätta den.
+export const EMAGINE_API = process.env.EMAGINE_API_URL ?? "https://portal-api.emagine.org";
+const SEARCH_URL = () => `${EMAGINE_API}/api/JobAds/Search`;
+const PAGE_SIZE = 50;
+
+export function searchBodies(page: number): unknown[] {
+  if (process.env.EMAGINE_SEARCH_BODY) {
+    return [JSON.parse(process.env.EMAGINE_SEARCH_BODY.replace(/"\{page\}"|\{page\}/g, String(page)))];
+  }
   return [
-    ...new Set(
-      [
-        process.env.EMAGINE_API_URL,
-        `${EMAGINE_PORTAL}/api/jobs?${q}`,
-        `${EMAGINE_PORTAL}/api/public/jobs?${q}`,
-        `${EMAGINE_PORTAL}/api/jobs/search?${q}`,
-        `${EMAGINE_PORTAL}/api/v1/jobs?${q}`,
-        `${EMAGINE_PORTAL}/api/projects?${q}`,
-      ].filter((u): u is string => !!u),
-    ),
+    { pageNumber: page, pageSize: PAGE_SIZE },
+    { page, pageSize: PAGE_SIZE },
+    { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE },
+    { pageIndex: page - 1, pageSize: PAGE_SIZE },
+    { paging: { pageNumber: page, pageSize: PAGE_SIZE } },
+    {},
   ];
 }
 
-export function probeEmagineApi() {
-  return probeJsonApis(emagineApiCandidates(), parseEmagineJson);
+async function postSearch(body: unknown) {
+  const res = await fetchText(SEARCH_URL(), {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    timeoutMs: 8000,
+  });
+  let json: unknown = null;
+  try {
+    json = JSON.parse(res.body);
+  } catch {
+    /* inte JSON */
+  }
+  return { status: res.status, json, items: json && res.status < 400 ? parseEmagineJson(json) : [], body: res.body };
+}
+
+/** För /api/debug: provar sökanropet med olika förfrågningar och visar svaren (även felmeddelanden). */
+export async function probeEmagineApi() {
+  return Promise.all(
+    searchBodies(1).map(async (body) => {
+      try {
+        const r = await postSearch(body);
+        return {
+          url: `POST ${SEARCH_URL()} ${JSON.stringify(body)}`,
+          status: r.status,
+          bytes: r.body.length,
+          items: r.items.length,
+          topLevelKeys: r.json && typeof r.json === "object" && !Array.isArray(r.json) ? Object.keys(r.json) : undefined,
+          firstItem: r.items[0],
+          sample: r.body.slice(0, 1200),
+        };
+      } catch (err) {
+        return { url: `POST ${SEARCH_URL()} ${JSON.stringify(body)}`, status: err instanceof Error ? err.message : String(err), bytes: 0, items: 0 };
+      }
+    }),
+  );
+}
+
+/** Söker med den första förfrågningsvariant som ger uppdrag, och bläddrar. */
+async function scrapeSearch(errors: string[]): Promise<{ items: Assignment[]; pages: number; via: string }> {
+  const bodies = searchBodies(1);
+  let idx = -1;
+  let first: Assignment[] = [];
+  const statuses: (number | string)[] = [];
+  for (let i = 0; i < bodies.length; i++) {
+    try {
+      const r = await postSearch(bodies[i]);
+      statuses.push(r.status);
+      if (r.items.length) {
+        idx = i;
+        first = r.items;
+        break;
+      }
+    } catch (err) {
+      statuses.push(err instanceof Error ? err.message : "fel");
+    }
+  }
+  if (idx < 0) {
+    errors.push(`POST /api/JobAds/Search: inga uppdrag (${statuses.join(", ")})`);
+    return { items: [], pages: 0, via: "" };
+  }
+  const seen = new Map(first.map((a) => [a.id, a]));
+  let pages = 1;
+  for (let page = 2; page <= MAX_PAGES && first.length >= PAGE_SIZE / 2; page++) {
+    try {
+      const r = await postSearch(searchBodies(page)[idx]);
+      const fresh = r.items.filter((a) => !seen.has(a.id));
+      if (!fresh.length) break;
+      fresh.forEach((a) => seen.set(a.id, a));
+      pages++;
+    } catch {
+      break;
+    }
+  }
+  return { items: [...seen.values()], pages, via: JSON.stringify(bodies[idx]) };
 }
 
 export const emagine: SourceAdapter = {
@@ -55,12 +132,12 @@ export const emagine: SourceAdapter = {
 
     // 1) Listsidor och 2) JSON-API parallellt.
     const [api, ...listings] = await Promise.all([
-      scrapeJsonApi(emagineApiCandidates(), parseEmagineJson, { maxPages: MAX_PAGES, errors }),
+      scrapeSearch(errors),
       ...LISTING_PAGES.map((p) => scrapePaged(p.url, parseEmagineListing, { hostSuffix: p.host, maxPages: MAX_PAGES, errors })),
     ]);
     if (api.items.length) {
       add(api.items);
-      strategies.push(`API ${api.via} (${api.pages} sid): ${api.items.length}`);
+      strategies.push(`API JobAds/Search ${api.via} (${api.pages} sid): ${api.items.length}`);
     }
     listings.forEach((l, i) => {
       if (!l.items.length) return;

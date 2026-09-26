@@ -147,13 +147,13 @@ export interface JobMapOptions {
   stringIds?: boolean;
 }
 
-const ID_KEYS = ["id", "jobRequestId", "requestId", "jobId", "reqId", "postingId", "externalId"];
+const ID_KEYS = ["id", "jobAdId", "jobRequestId", "requestId", "jobId", "reqId", "postingId", "externalId"];
 const TITLE_KEYS = ["title", "jobTitle", "positionTitle", "name", "headline", "roleName", "role"];
 // Minst ett av dessa fält måste finnas för att objektet ska räknas som ett uppdrag (inte t.ex. en kompetens).
 const JOBISH = [
   "startDate", "endDate", "lastDayOfApplications", "applicationDeadline", "location", "locations", "description",
   "remoteness", "firstDayOfApplications", "publishedAt", "created", "postedDate", "datePosted", "jobDescription",
-  "city", "country", "workLocation", "closingDate",
+  "city", "country", "workLocation", "closingDate", "publishedDate", "publishDate", "createdDate", "locationName",
 ];
 
 /**
