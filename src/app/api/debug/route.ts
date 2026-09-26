@@ -43,7 +43,7 @@ export const dynamic = "force-dynamic";
  * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
  * utdrag runt ord som "cursor", "fetch" och "load-more". &find=ord visar koden runt
- * varje förekomst av ordet (t.ex. &find=jobsearch). Med &follow=1 söks även alla
+ * varje förekomst av ordet (t.ex. &find=jobsearch); &after=2000 visar mer efter träffen. Med &follow=1 söks även alla
  * JS-filer (chunks) som filen laddar.
  * JSON-svar visas med antal tolkade uppdrag, fältnamn och första uppdraget.
  */
@@ -106,13 +106,15 @@ export async function GET(req: Request) {
           })
           .filter((c) => c && new URL(c).host === new URL(res.url).host && c !== res.url);
       const chunkUrls = [...new Set(chunkRefs(js, res.url))].slice(0, 120);
+      // &after=N: visa N tecken efter träffen (standard 400, högst 5000).
+      const after = Math.min(5000, Math.max(100, Number(params.get("after") ?? 400) || 400));
       if (find) {
         const search = (text: string, max: number) => {
           const out: string[] = [];
           let idx = text.indexOf(find);
           while (idx >= 0 && out.length < max) {
-            out.push(text.slice(Math.max(0, idx - 400), Math.min(text.length, idx + 400)));
-            idx = text.indexOf(find, idx + 400);
+            out.push(text.slice(Math.max(0, idx - 400), Math.min(text.length, idx + after)));
+            idx = text.indexOf(find, idx + after);
           }
           return out;
         };
