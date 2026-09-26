@@ -250,6 +250,43 @@ export async function GET(req: Request) {
         }
       }),
       listSnippet,
+      // Inbäddad JSON (Angular ng-state, __NEXT_DATA__ m.fl.): id, storlek, nycklar och början.
+      jsonScripts: $('script[type="application/json"], script[type="application/ld+json"], script#ng-state, script#__NEXT_DATA__')
+        .toArray()
+        .map((el) => {
+          const text = $(el).html() ?? "";
+          let keys: string[] | undefined;
+          try {
+            const j = JSON.parse(text);
+            keys = j && typeof j === "object" ? Object.keys(j).slice(0, 40) : undefined;
+          } catch {
+            /* inte giltig JSON */
+          }
+          return { id: $(el).attr("id"), type: $(el).attr("type"), bytes: text.length, keys, start: text.slice(0, 2500) };
+        })
+        .slice(0, 10),
+      // Vanligaste länkmönstren på sidan (sökväg utan siffror → antal, exempel).
+      linkPatterns: Object.entries(
+        $("a[href]")
+          .toArray()
+          .reduce<Record<string, { count: number; example: string }>>((acc, el) => {
+            const href = $(el).attr("href") ?? "";
+            if (!href || href.startsWith("#") || href.startsWith("mailto:")) return acc;
+            let path: string;
+            try {
+              path = new URL(href, res.url).pathname;
+            } catch {
+              return acc;
+            }
+            const pattern = path.replace(/\/\d+/g, "/{nr}").replace(/\/[^/]*-[^/]*(?=\/|$)/g, "/{slug}");
+            acc[pattern] = acc[pattern] ?? { count: 0, example: href };
+            acc[pattern].count++;
+            return acc;
+          }, {}),
+      )
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 25)
+        .map(([pattern, v]) => ({ pattern, ...v })),
       ...(params.get("full") === "1" ? { html: res.body } : {}),
     });
   } catch (err) {
