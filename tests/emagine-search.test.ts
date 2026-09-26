@@ -1,7 +1,7 @@
 // Felsvaret nedan är riktigt (POST https://portal-api.emagine.org/api/JobAds/Search, 2026-09-26).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { errorPath, fixSearchBody, hasPaging, seedBodies, withPage } from "../src/lib/sources/emagine-search.ts";
+import { errorPath, fixSearchBody, hasPaging, languageOrder, languagesFromNgState, seedBodies, serverErrorVariants, withPage } from "../src/lib/sources/emagine-search.ts";
 
 test("felnycklar blir sökvägar", () => {
   assert.deepEqual(errorPath("Filter"), ["filter"]);
@@ -41,4 +41,27 @@ test("portalens förfrågan och bläddring med skipCount", () => {
   assert.equal(seed.sorting, "CreationTime desc");
   assert.equal(hasPaging(seed), true);
   assert.deepEqual(withPage(seed, 3), { ...seed, skipCount: 200 });
+});
+
+test("verkliga fel: listfält och parameterfelet input", () => {
+  const round1 = {
+    "Filter.TextFilters": ["The TextFilters field is required."],
+    "Filter.RecordIdsToExclude": ["The RecordIdsToExclude field is required."],
+    "Filter.ConsultantSeniorities": ["The ConsultantSeniorities field is required."],
+  };
+  assert.deepEqual(fixSearchBody({ filter: {} }, round1), { filter: { textFilters: [], recordIdsToExclude: [], consultantSeniorities: [] } });
+  // "input" är åtgärdens parameter, inte ett fält i kroppen.
+  assert.equal(fixSearchBody({ filter: {} }, { input: ["The input field is required."] }), null);
+});
+
+test("språk ur ng-state och varianter vid serverfel", () => {
+  const html = `<script id="ng-state" type="application/json">${JSON.stringify({
+    lookups: { supportedLanguages: [{ id: 3, code: "DA" }, { id: 5, code: "EN" }, { id: 7, code: "SV" }], languageProficiencies: [{ id: 99, name: "Native" }] },
+  })}</script>`;
+  const langs = languagesFromNgState(html);
+  assert.deepEqual(langs.map((l) => l.id), [3, 5, 7]);
+  assert.deepEqual(languageOrder(langs), [5, 7, 3]);
+  const v = serverErrorVariants({ filter: {}, supportedLanguageId: 1 }, [5, 7, 3]);
+  assert.deepEqual(v.map((b) => b.supportedLanguageId), [5, 7, 3, 2, 0, 1, undefined]);
+  assert.equal(v[5].maxResultCount, 20);
 });

@@ -4,7 +4,7 @@ import { scrapePaged } from "../paging.ts";
 import { urlsFromSitemaps } from "../sitemap.ts";
 import { isSwedish } from "../sweden.ts";
 import { walk } from "../parse-utils.ts";
-import { EMAGINE_PAGE_SIZE, fixSearchBody, hasPaging, seedBodies, withPage } from "./emagine-search.ts";
+import { EMAGINE_PAGE_SIZE, fixSearchBody, hasPaging, languageOrder, languagesFromNgState, seedBodies, serverErrorVariants, withPage, type EmagineLanguage } from "./emagine-search.ts";
 import { EMAGINE_PORTAL, emagineUrl, extractEmagineId, parseEmagineDetail, parseEmagineJson, parseEmagineListing } from "./emagine-parse.ts";
 
 // emagine publicerar uppdrag i portalen (portal.emagine.org/jobs/<id>/<titel>)
@@ -52,24 +52,52 @@ async function postSearch(body: unknown) {
   return { status: res.status, json, items: json && res.status < 400 ? parseEmagineJson(json) : [], body: res.body };
 }
 
-type Round = { body: Json; status: number | string; errors?: unknown; items: number; bytes?: number };
+type Round = { body: Json; status: number | string; errors?: unknown; items: number; bytes?: number; response?: string };
 
-/** Postar, och kompletterar förfrågan utifrån valideringsfelen tills svaret är OK. */
+let languageCache: Promise<{ ids: number[]; langs: EmagineLanguage[] }> | undefined;
+
+/** Språk-id ur portalens ng-state (hämtas en gång). */
+function portalLanguages() {
+  languageCache ??= fetchText(`${EMAGINE_PORTAL}/jobs`, { timeoutMs: 8000, revalidate: 24 * 3600 })
+    .then((r) => {
+      const langs = languagesFromNgState(r.body);
+      return { ids: languageOrder(langs), langs };
+    })
+    .catch(() => ({ ids: [], langs: [] }));
+  return languageCache;
+}
+
+/**
+ * Postar, och kompletterar förfrågan utifrån valideringsfelen tills svaret är OK.
+ * Klarar förfrågan valideringen men servern svarar 5xx provas varianter (språk m.m.).
+ */
 async function discover(seed: Json): Promise<{ body: Json; rounds: Round[]; result?: Awaited<ReturnType<typeof postSearch>> }> {
   let body = seed;
   const rounds: Round[] = [];
-  for (let i = 0; i < MAX_ROUNDS; i++) {
-    let r;
+  const attempt = async (b: Json) => {
     try {
-      r = await postSearch(body);
+      const r = await postSearch(b);
+      const errs = r.json && typeof r.json === "object" ? (r.json as Json).errors : undefined;
+      rounds.push({ body: b, status: r.status, errors: errs, items: r.items.length, bytes: r.body.length, response: r.status >= 400 && !errs ? r.body.slice(0, 300) : undefined });
+      return { r, errs };
     } catch (err) {
-      rounds.push({ body, status: err instanceof Error ? err.message : String(err), items: 0 });
+      rounds.push({ body: b, status: err instanceof Error ? err.message : String(err), items: 0 });
+      return null;
+    }
+  };
+  for (let i = 0; i < MAX_ROUNDS; i++) {
+    const a = await attempt(body);
+    if (!a) return { body, rounds };
+    if (a.r.status < 400) return { body, rounds, result: a.r };
+    if (a.r.status >= 500) {
+      const { ids } = await portalLanguages();
+      for (const v of serverErrorVariants(body, ids)) {
+        const b = await attempt(v);
+        if (b && b.r.status < 400) return { body: v, rounds, result: b.r };
+      }
       return { body, rounds };
     }
-    const errs = r.json && typeof r.json === "object" ? (r.json as Json).errors : undefined;
-    rounds.push({ body, status: r.status, errors: errs, items: r.items.length, bytes: r.body.length });
-    if (r.status < 400) return { body, rounds, result: r };
-    const next = errs && typeof errs === "object" ? fixSearchBody(body, errs as Json) : null;
+    const next = a.errs && typeof a.errs === "object" ? fixSearchBody(body, a.errs as Json) : null;
     if (!next) return { body, rounds };
     body = next;
   }
@@ -86,12 +114,14 @@ function firstObjectKeys(json: unknown): string[] | undefined {
 
 /** För /api/debug: visar varje steg i inlärningen av förfrågan och det slutliga svaret. */
 export async function probeEmagineApi() {
+  const { langs } = await portalLanguages();
   return Promise.all(
-    startBodies().map(async (seed) => {
+    startBodies().slice(0, 1).map(async (seed) => {
       const d = await discover(seed);
       const r = d.result;
       return {
         url: `POST ${SEARCH_URL()}`,
+        portalLanguages: langs,
         finalBody: d.body,
         status: d.rounds.at(-1)?.status,
         items: r?.items.length ?? 0,

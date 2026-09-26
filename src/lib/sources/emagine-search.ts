@@ -18,12 +18,22 @@ const SKIP_KEY = /^(skip|skipCount|offset|from|start)$/i;
  * Startförfrågningar. Formatet är portalens eget (proxySearchAllJobs i
  * chunk-CU2XS2X6.js, 2026-09-26): { skipCount, maxResultCount, sorting, filter,
  * supportedLanguageId }, där sorting är t.ex. "CreationTime desc" (NewestFirst i
- * chunk-JD6HBCB5.js). Filtrets fält och språkets id är inte kända; saknas något
- * som krävs kompletteras det ur valideringsfelen.
+ * chunk-JD6HBCB5.js). Språkets id är inte känt (se serverErrorVariants); saknas
+ * något som krävs kompletteras det ur valideringsfelen.
  */
 export function seedBodies(): Json[] {
-  const base = { skipCount: 0, maxResultCount: EMAGINE_PAGE_SIZE, sorting: "CreationTime desc", filter: {} };
-  return [{ ...base, supportedLanguageId: 1 }, base];
+  // Filtrets obligatoriska fält enligt API:ts valideringsfel (2026-09-26).
+  const filter = {
+    textFilters: [],
+    industriesIds: [],
+    workLocations: [],
+    workLocationTypes: [],
+    recordIdsToExclude: [],
+    professionalRolesIds: [],
+    consultantSeniorities: [],
+    languageProficiencies: [],
+  };
+  return [{ skipCount: 0, maxResultCount: EMAGINE_PAGE_SIZE, sorting: "CreationTime desc", filter, supportedLanguageId: 1 }];
 }
 
 const camel = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -70,7 +80,7 @@ function valueByName(name: string): unknown {
   if (PAGE_INDEX_KEY.test(name) || SKIP_KEY.test(name)) return 0;
   if (SIZE_KEY.test(name)) return EMAGINE_PAGE_SIZE;
   if (/^(is|has|include|only|show)[A-Z]/.test(name)) return false;
-  if (/(Ids|List|s)$/.test(name) && !/(Status|Address|Class)$/.test(name)) return [];
+  if (/Ids|List|s$/.test(name) && !/(Status|Address|Class)$/.test(name)) return [];
   if (/(id|number|count|type|direction|order)$/i.test(name)) return 0;
   return "";
 }
@@ -96,7 +106,9 @@ export function fixSearchBody(body: Json, errors: Record<string, unknown>): Json
   for (const [key, msgs] of Object.entries(errors)) {
     const path = errorPath(key);
     const msg = Array.isArray(msgs) ? msgs.join(" ") : String(msgs);
-    if (!path.length || (path.length === 1 && path[0] === "request")) continue;
+    // "The input field is required." gäller åtgärdens parameter (hela kroppen gick inte
+    // att läsa, t.ex. p.g.a. ett typfel), inte ett fält. Modellens fält har PascalCase.
+    if (!path.length || (path.length === 1 && /^[a-z$]/.test(key) && /required/i.test(msg))) continue;
     const name = path[path.length - 1];
     const cur = getPath(next, path);
     let value: unknown;
@@ -145,4 +157,61 @@ export function withPage(body: Json, page: number): Json {
 /** Sant om förfrågan har något sidfält (annars går det inte att bläddra). */
 export function hasPaging(body: Json): boolean {
   return JSON.stringify(withPage(body, 2)) !== JSON.stringify(body);
+}
+
+export interface EmagineLanguage {
+  id: number;
+  label: string;
+}
+
+/** Språk (id + kod/namn) ur portalens ng-state (lookups), t.ex. supportedLanguages. */
+export function languagesFromNgState(html: string): EmagineLanguage[] {
+  const m = html.match(/<script[^>]*id="ng-state"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m) return [];
+  let state: unknown;
+  try {
+    state = JSON.parse(m[1]);
+  } catch {
+    return [];
+  }
+  const out = new Map<number, EmagineLanguage>();
+  const visit = (node: unknown, key: string, depth: number) => {
+    if (depth > 8 || !node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      if (/language/i.test(key) && !/proficienc/i.test(key)) {
+        for (const x of node) {
+          if (!x || typeof x !== "object") continue;
+          const o = x as Json;
+          const id = typeof o.id === "number" ? o.id : typeof o.value === "number" ? o.value : undefined;
+          const label = [o.code, o.isoCode, o.culture, o.name, o.displayName].find((v): v is string => typeof v === "string");
+          if (id !== undefined && !out.has(id)) out.set(id, { id, label: label ?? "" });
+        }
+      }
+      for (const x of node) visit(x, key, depth + 1);
+      return;
+    }
+    for (const [k, v] of Object.entries(node)) visit(v, k, depth + 1);
+  };
+  visit(state, "", 0);
+  return [...out.values()];
+}
+
+/** Engelska först (portalens standardspråk), sedan svenska, sedan resten. */
+export function languageOrder(langs: EmagineLanguage[]): number[] {
+  const rank = (l: EmagineLanguage) => (/^en\b|english/i.test(l.label) ? 0 : /^sv\b|swedish|svenska/i.test(l.label) ? 1 : 2);
+  return [...langs].sort((a, b) => rank(a) - rank(b)).map((l) => l.id);
+}
+
+/**
+ * Varianter att prova när förfrågan klarar valideringen men servern svarar 5xx:
+ * andra språk-id, mindre sida, utan språk.
+ */
+export function serverErrorVariants(body: Json, languageIds: number[]): Json[] {
+  const out: Json[] = [];
+  const ids = [...new Set([...languageIds, 1, 2, 0])].filter((id) => id !== body.supportedLanguageId);
+  for (const id of ids.slice(0, 6)) out.push({ ...body, supportedLanguageId: id });
+  out.push({ ...body, maxResultCount: 20 });
+  const { supportedLanguageId: _drop, ...noLang } = body;
+  if ("supportedLanguageId" in body) out.push(noLang);
+  return out;
 }
