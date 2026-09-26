@@ -43,7 +43,8 @@ export const dynamic = "force-dynamic";
  * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
  * utdrag runt ord som "cursor", "fetch" och "load-more". &find=ord visar koden runt
- * varje förekomst av ordet (t.ex. &find=jobsearch).
+ * varje förekomst av ordet (t.ex. &find=jobsearch). Med &follow=1 söks även alla
+ * JS-filer (chunks) som filen laddar.
  * JSON-svar visas med antal tolkade uppdrag, fältnamn och första uppdraget.
  */
 export async function GET(req: Request) {
@@ -93,14 +94,70 @@ export async function GET(req: Request) {
     if (/\.m?js(\?|$)/.test(u.pathname + u.search) || /^\s*(?:!function|\(function|"use strict"|var |const |let |import )/.test(res.body)) {
       const js = res.body;
       const find = params.get("find");
+      // Andra JS-filer som filen laddar (Angular/Vite-chunks), på samma värd.
+      const chunkRefs = (text: string, base: string) =>
+        [...text.matchAll(/["'`]((?:\.{0,2}\/)?[\w./-]*?[\w-]+\.m?js)["'`]/g)]
+          .map((m) => {
+            try {
+              return new URL(m[1], base).toString();
+            } catch {
+              return "";
+            }
+          })
+          .filter((c) => c && new URL(c).host === new URL(res.url).host && c !== res.url);
+      const chunkUrls = [...new Set(chunkRefs(js, res.url))].slice(0, 120);
       if (find) {
-        const snippets: string[] = [];
-        let idx = js.indexOf(find);
-        while (idx >= 0 && snippets.length < 25) {
-          snippets.push(js.slice(Math.max(0, idx - 400), Math.min(js.length, idx + 400)));
-          idx = js.indexOf(find, idx + 400);
+        const search = (text: string, max: number) => {
+          const out: string[] = [];
+          let idx = text.indexOf(find);
+          while (idx >= 0 && out.length < max) {
+            out.push(text.slice(Math.max(0, idx - 400), Math.min(text.length, idx + 400)));
+            idx = text.indexOf(find, idx + 400);
+          }
+          return out;
+        };
+        const snippets = search(js, 25);
+        // &follow=1: sök även i alla chunks som filen laddar.
+        let inChunks: { chunk: string; snippets: string[] }[] | undefined;
+        let searched = 0;
+        if (params.get("follow") === "1") {
+          // Två nivåer: chunks som huvudfilen laddar, och chunks som de i sin tur laddar (max 200 filer).
+          const seen = new Set<string>([res.url]);
+          const found: { chunk: string; snippets: string[] }[] = [];
+          let level = chunkUrls;
+          for (let depth = 0; depth < 2 && level.length; depth++) {
+            const batch = level.filter((c) => !seen.has(c)).slice(0, 200 - seen.size);
+            batch.forEach((c) => seen.add(c));
+            const results = await Promise.all(
+              batch.map(async (c) => {
+                try {
+                  const r = await fetchText(c, { revalidate: 3600, timeoutMs: 8000 });
+                  return { chunk: c, body: r.status < 400 ? r.body : "" };
+                } catch {
+                  return { chunk: c, body: "" };
+                }
+              }),
+            );
+            searched += results.length;
+            for (const r of results) {
+              const sn = search(r.body, 8);
+              if (sn.length) found.push({ chunk: r.chunk, snippets: sn });
+            }
+            level = [...new Set(results.flatMap((r) => chunkRefs(r.body, r.chunk)))];
+          }
+          inChunks = found.slice(0, 15);
         }
-        return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: js.length, find, matches: snippets.length, snippets });
+        return NextResponse.json({
+          status: res.status,
+          finalUrl: res.url,
+          bytes: js.length,
+          find,
+          matches: snippets.length,
+          snippets,
+          chunksSearched: params.get("follow") === "1" ? searched : undefined,
+          inChunks,
+          chunks: params.get("follow") === "1" ? undefined : chunkUrls.slice(0, 40),
+        });
       }
       // Alla adresser i filen: fullständiga (utom kända tredjepartsbibliotek) och relativa som ser ut som API-anrop.
       const absoluteUrls = [
