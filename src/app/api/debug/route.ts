@@ -11,6 +11,8 @@ import { probeEworkApi } from "@/lib/sources/ework";
 import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
 import { extractMagnitId, MAGNIT_GATEWAY, parseMagnitDetail, parseMagnitHtml, parseMagnitJson } from "@/lib/sources/magnit-parse";
 import { probeMagnitApi } from "@/lib/sources/magnit";
+import { extractEmagineId, parseEmagineDetail, parseEmagineJson, parseEmagineListing } from "@/lib/sources/emagine-parse";
+import { probeEmagineApi } from "@/lib/sources/emagine";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -21,6 +23,8 @@ const SITES = [
   { host: "eworkgroup.com", parse: parseVeramaHtml, extractId: extractVeramaId, json: parseVeramaJson },
   { host: "keyman.se", parse: parseKeymanListing, extractId: extractKeymanId },
   { host: "magnitglobal.com", parse: parseMagnitHtml, extractId: extractMagnitId },
+  { host: "emagine.org", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
+  { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
 ];
@@ -39,7 +43,8 @@ export const dynamic = "force-dynamic";
  * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
  * utdrag runt ord som "cursor", "fetch" och "load-more". &find=ord visar koden runt
- * varje förekomst av ordet (t.ex. &find=jobsearch).
+ * varje förekomst av ordet (t.ex. &find=jobsearch); &after=2000 visar mer efter träffen. Med &follow=1 söks även alla
+ * JS-filer (chunks) som filen laddar.
  * JSON-svar visas med antal tolkade uppdrag, fältnamn och första uppdraget.
  */
 export async function GET(req: Request) {
@@ -89,14 +94,74 @@ export async function GET(req: Request) {
     if (/\.m?js(\?|$)/.test(u.pathname + u.search) || /^\s*(?:!function|\(function|"use strict"|var |const |let |import )/.test(res.body)) {
       const js = res.body;
       const find = params.get("find");
+      // Andra JS-filer som filen laddar (Angular/Vite-chunks), på samma värd.
+      const chunkRefs = (text: string, base: string) =>
+        [...text.matchAll(/["'`]((?:\.{0,2}\/)?[\w./-]*?[\w-]+\.m?js)["'`]/g)]
+          .map((m) => {
+            try {
+              return new URL(m[1], base).toString();
+            } catch {
+              return "";
+            }
+          })
+          .filter((c) => c && new URL(c).host === new URL(res.url).host && c !== res.url);
+      const chunkUrls = [...new Set(chunkRefs(js, res.url))].slice(0, 120);
+      // &after=N: visa N tecken efter träffen (standard 400, högst 5000).
+      const after = Math.min(5000, Math.max(100, Number(params.get("after") ?? 400) || 400));
       if (find) {
-        const snippets: string[] = [];
-        let idx = js.indexOf(find);
-        while (idx >= 0 && snippets.length < 25) {
-          snippets.push(js.slice(Math.max(0, idx - 400), Math.min(js.length, idx + 400)));
-          idx = js.indexOf(find, idx + 400);
+        const search = (text: string, max: number) => {
+          const out: string[] = [];
+          let idx = text.indexOf(find);
+          while (idx >= 0 && out.length < max) {
+            out.push(text.slice(Math.max(0, idx - 400), Math.min(text.length, idx + after)));
+            idx = text.indexOf(find, idx + after);
+          }
+          return out;
+        };
+        const snippets = search(js, 25);
+        // &follow=1: sök även i alla chunks som filen laddar.
+        let inChunks: { chunk: string; snippets: string[] }[] | undefined;
+        let searched = 0;
+        if (params.get("follow") === "1") {
+          // Två nivåer: chunks som huvudfilen laddar, och chunks som de i sin tur laddar (max 200 filer).
+          const seen = new Set<string>([res.url]);
+          const found: { chunk: string; snippets: string[] }[] = [];
+          let level = chunkUrls;
+          for (let depth = 0; depth < 2 && level.length; depth++) {
+            const batch = level.filter((c) => !seen.has(c)).slice(0, 200 - seen.size);
+            batch.forEach((c) => seen.add(c));
+            const results = await Promise.all(
+              batch.map(async (c) => {
+                try {
+                  const r = await fetchText(c, { revalidate: 3600, timeoutMs: 8000 });
+                  // Hoppa över HTML (servern svarar med appens startsida för okända adresser).
+                  const isHtml = /html/i.test(r.headers["content-type"] ?? "") || /^\s*<(!doctype|html)/i.test(r.body);
+                  return { chunk: c, body: r.status < 400 && !isHtml ? r.body : "" };
+                } catch {
+                  return { chunk: c, body: "" };
+                }
+              }),
+            );
+            searched += results.length;
+            for (const r of results) {
+              const sn = search(r.body, 8);
+              if (sn.length) found.push({ chunk: r.chunk, snippets: sn });
+            }
+            level = [...new Set(results.flatMap((r) => chunkRefs(r.body, r.chunk)))];
+          }
+          inChunks = found.slice(0, 15);
         }
-        return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: js.length, find, matches: snippets.length, snippets });
+        return NextResponse.json({
+          status: res.status,
+          finalUrl: res.url,
+          bytes: js.length,
+          find,
+          matches: snippets.length,
+          snippets,
+          chunksSearched: params.get("follow") === "1" ? searched : undefined,
+          inChunks,
+          chunks: params.get("follow") === "1" ? undefined : chunkUrls.slice(0, 40),
+        });
       }
       // Alla adresser i filen: fullständiga (utom kända tredjepartsbibliotek) och relativa som ser ut som API-anrop.
       const absoluteUrls = [
@@ -187,10 +252,19 @@ export async function GET(req: Request) {
     ].slice(0, 60);
 
     const isVerama = site.host === "verama.com" || site.host === "eworkgroup.com";
-    const cursor = site.host === "brainville.com" || isVerama || site.host === "magnitglobal.com" ? null : extractNextCursor(res.body, res.headers);
+    const cursor = site.host === "brainville.com" || isVerama || site.host === "magnitglobal.com" || site.host.includes("emagine") ? null : extractNextCursor(res.body, res.headers);
     const isMagnit = site.host === "magnitglobal.com";
+    const isEmagine = site.host === "emagine.org" || site.host === "emagine-consulting.se";
     const apiProbe =
-      params.get("probe") === "1" ? (isVerama ? await probeEworkApi() : isMagnit ? await probeMagnitApi() : undefined) : undefined;
+      params.get("probe") === "1"
+        ? isVerama
+          ? await probeEworkApi()
+          : isMagnit
+            ? await probeMagnitApi()
+            : isEmagine
+              ? await probeEmagineApi()
+              : undefined
+        : undefined;
     const loadMoreProbe =
       cursor && params.get("probe") === "1"
         ? await probeLoadMore(res.url, cursor, new Set(items.map((a) => a.id)))
@@ -206,7 +280,11 @@ export async function GET(req: Request) {
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: site.host === "magnitglobal.com"
+      detail: isEmagine
+        ? extractEmagineId(res.url)
+          ? parseEmagineDetail(res.body)
+          : undefined
+        : site.host === "magnitglobal.com"
         ? extractMagnitId(res.url)
           ? parseMagnitDetail(res.body)
           : undefined
@@ -233,6 +311,43 @@ export async function GET(req: Request) {
         }
       }),
       listSnippet,
+      // Inbäddad JSON (Angular ng-state, __NEXT_DATA__ m.fl.): id, storlek, nycklar och början.
+      jsonScripts: $('script[type="application/json"], script[type="application/ld+json"], script#ng-state, script#__NEXT_DATA__')
+        .toArray()
+        .map((el) => {
+          const text = $(el).html() ?? "";
+          let keys: string[] | undefined;
+          try {
+            const j = JSON.parse(text);
+            keys = j && typeof j === "object" ? Object.keys(j).slice(0, 40) : undefined;
+          } catch {
+            /* inte giltig JSON */
+          }
+          return { id: $(el).attr("id"), type: $(el).attr("type"), bytes: text.length, keys, start: text.slice(0, 2500) };
+        })
+        .slice(0, 10),
+      // Vanligaste länkmönstren på sidan (sökväg utan siffror → antal, exempel).
+      linkPatterns: Object.entries(
+        $("a[href]")
+          .toArray()
+          .reduce<Record<string, { count: number; example: string }>>((acc, el) => {
+            const href = $(el).attr("href") ?? "";
+            if (!href || href.startsWith("#") || href.startsWith("mailto:")) return acc;
+            let path: string;
+            try {
+              path = new URL(href, res.url).pathname;
+            } catch {
+              return acc;
+            }
+            const pattern = path.replace(/\/\d+/g, "/{nr}").replace(/\/[^/]*-[^/]*(?=\/|$)/g, "/{slug}");
+            acc[pattern] = acc[pattern] ?? { count: 0, example: href };
+            acc[pattern].count++;
+            return acc;
+          }, {}),
+      )
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 25)
+        .map(([pattern, v]) => ({ pattern, ...v })),
       ...(params.get("full") === "1" ? { html: res.body } : {}),
     });
   } catch (err) {
