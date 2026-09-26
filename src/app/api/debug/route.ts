@@ -6,10 +6,10 @@ import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/so
 import { extractNextCursor } from "@/lib/sources/cinode-parse";
 import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
 import { findNextPage } from "@/lib/parse-utils";
-import { extractVeramaId, parseVeramaDetail, parseVeramaHtml } from "@/lib/sources/ework-parse";
+import { extractVeramaId, parseVeramaDetail, parseVeramaHtml, parseVeramaJson } from "@/lib/sources/ework-parse";
 import { probeEworkApi } from "@/lib/sources/ework";
 import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
-import { extractMagnitId, parseMagnitDetail, parseMagnitHtml } from "@/lib/sources/magnit-parse";
+import { extractMagnitId, MAGNIT_GATEWAY, parseMagnitDetail, parseMagnitHtml, parseMagnitJson } from "@/lib/sources/magnit-parse";
 import { probeMagnitApi } from "@/lib/sources/magnit";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
@@ -17,10 +17,12 @@ const SITES = [
   { host: "brainville.com", parse: parseListing, extractId: extractRequisitionId },
   { host: "cinode.market", parse: parseCinodeListing, extractId: extractCinodeId },
   { host: "cinode.com", parse: parseCinodeListing, extractId: extractCinodeId },
-  { host: "verama.com", parse: parseVeramaHtml, extractId: extractVeramaId },
-  { host: "eworkgroup.com", parse: parseVeramaHtml, extractId: extractVeramaId },
+  { host: "verama.com", parse: parseVeramaHtml, extractId: extractVeramaId, json: parseVeramaJson },
+  { host: "eworkgroup.com", parse: parseVeramaHtml, extractId: extractVeramaId, json: parseVeramaJson },
   { host: "keyman.se", parse: parseKeymanListing, extractId: extractKeymanId },
   { host: "magnitglobal.com", parse: parseMagnitHtml, extractId: extractMagnitId },
+  // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
+  { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
 ];
 
 export const runtime = "nodejs";
@@ -36,7 +38,9 @@ export const dynamic = "force-dynamic";
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
  * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
- * utdrag runt ord som "cursor", "fetch" och "load-more".
+ * utdrag runt ord som "cursor", "fetch" och "load-more". &find=ord visar koden runt
+ * varje förekomst av ordet (t.ex. &find=jobsearch).
+ * JSON-svar visas med antal tolkade uppdrag, fältnamn och första uppdraget.
  */
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
@@ -47,15 +51,53 @@ export async function GET(req: Request) {
   } catch {
     return NextResponse.json({ error: "Ogiltig URL" }, { status: 400 });
   }
-  const site = SITES.find((s) => u.hostname === s.host || u.hostname.endsWith(`.${s.host}`));
+  const site = SITES.find((s) => u.hostname === s.host || (!("exact" in s) && u.hostname.endsWith(`.${s.host}`)));
   if (u.protocol !== "https:" || !site) {
     return NextResponse.json({ error: `Endast https-adresser på ${SITES.map((s) => s.host).join(", ")} tillåts` }, { status: 400 });
   }
   try {
-    const res = await fetchText(u.toString(), { revalidate: 0 });
+    const res = await fetchText(u.toString(), { revalidate: 0, headers: { Accept: "application/json, text/html;q=0.9, */*;q=0.8" } });
+
+    // JSON-svar (t.ex. ett API): visa hur det tolkas.
+    if (/json/i.test(res.headers["content-type"] ?? "") || /^\s*[[{]/.test(res.body)) {
+      let json: unknown = null;
+      try {
+        json = JSON.parse(res.body);
+      } catch {
+        /* inte JSON trots allt */
+      }
+      if (json !== null) {
+        const parseJson = "json" in site && site.json ? site.json : parseMagnitJson;
+        const items = parseJson(json);
+        const first = Array.isArray(json)
+          ? json[0]
+          : Object.values(json as object).find((v) => Array.isArray(v) && v.length)?.[0] ?? json;
+        return NextResponse.json({
+          status: res.status,
+          finalUrl: res.url,
+          contentType: res.headers["content-type"],
+          bytes: res.body.length,
+          topLevelKeys: Array.isArray(json) ? `array[${json.length}]` : Object.keys(json as object),
+          firstKeys: first && typeof first === "object" ? Object.keys(first) : undefined,
+          parsedCount: items.length,
+          firstItem: items[0],
+          sample: res.body.slice(0, 1500),
+        });
+      }
+    }
 
     if (/\.m?js(\?|$)/.test(u.pathname + u.search) || /^\s*(?:!function|\(function|"use strict"|var |const |let |import )/.test(res.body)) {
       const js = res.body;
+      const find = params.get("find");
+      if (find) {
+        const snippets: string[] = [];
+        let idx = js.indexOf(find);
+        while (idx >= 0 && snippets.length < 25) {
+          snippets.push(js.slice(Math.max(0, idx - 400), Math.min(js.length, idx + 400)));
+          idx = js.indexOf(find, idx + 400);
+        }
+        return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: js.length, find, matches: snippets.length, snippets });
+      }
       // Alla adresser i filen: fullständiga (utom kända tredjepartsbibliotek) och relativa som ser ut som API-anrop.
       const absoluteUrls = [
         ...new Set([...js.matchAll(/["'`](https?:\/\/[^"'`\s]{4,200})["'`]/g)].map((m) => m[1])),

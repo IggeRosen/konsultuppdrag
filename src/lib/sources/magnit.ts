@@ -2,12 +2,12 @@ import type { Assignment, SourceAdapter } from "../types.ts";
 import { fetchText, mapLimit } from "../http.ts";
 import { scrapeJsonApi, probeJsonApis } from "../json-api.ts";
 import { urlsFromSitemaps } from "../sitemap.ts";
-import { extractMagnitId, isSwedish, MAGNIT_BASE, parseMagnitDetail, parseMagnitHtml, parseMagnitJson } from "./magnit-parse.ts";
+import { extractMagnitId, isSwedish, MAGNIT_BASE, MAGNIT_GATEWAY, parseMagnitDetail, parseMagnitHtml, parseMagnitJson } from "./magnit-parse.ts";
 
-// Magnit Source (magnit-source.magnitglobal.com) är Magnits öppna marknadsplats.
-// Sajtens dataflöde är inte dokumenterat, så vi provar tänkbara JSON-API:er,
-// läser startsidans HTML/inbäddade JSON och sitemapen. Adressen till API:t kan
-// sättas med env MAGNIT_API_URL ({page} = sidnummer från 0).
+// Magnit Source (magnit-source.magnitglobal.com) är Magnits öppna marknadsplats,
+// en Angular-app som hämtar uppdragen från en separat API-server (MAGNIT_GATEWAY).
+// Vi provar dess jobsearch-anrop, läser startsidans HTML och sitemapen. En egen
+// adress kan sättas med env MAGNIT_API_URL ({page} = sidnummer från 0).
 const MAX_PAGES = Number(process.env.MAGNIT_MAX_PAGES ?? 6);
 const MAX_FROM_SITEMAP = Number(process.env.MAGNIT_MAX_SITEMAP ?? 60);
 const MAX_DETAIL_FETCHES = Number(process.env.MAGNIT_MAX_DETAILS ?? 60);
@@ -15,19 +15,16 @@ const MAX_DETAIL_FETCHES = Number(process.env.MAGNIT_MAX_DETAILS ?? 60);
 const ALL_COUNTRIES = process.env.MAGNIT_ALL_COUNTRIES === "1";
 
 export function magnitApiCandidates(): string[] {
-  const q = "page={page}&size=50";
+  const gw = MAGNIT_GATEWAY;
   return [
     ...new Set(
       [
         process.env.MAGNIT_API_URL,
-        `${MAGNIT_BASE}/api/jobs?${q}`,
-        `${MAGNIT_BASE}/api/public/jobs?${q}`,
-        `${MAGNIT_BASE}/api/job-requests?${q}`,
-        `${MAGNIT_BASE}/api/public/job-requests?${q}`,
-        `${MAGNIT_BASE}/api/requests?${q}`,
-        `${MAGNIT_BASE}/api/v1/jobs?${q}`,
-        `${MAGNIT_BASE}/api/search?${q}`,
-        `${MAGNIT_BASE}/api/jobs/search?${q}`,
+        // Riktiga anrop ur sajtens JavaScript (2026-09-26). Startsidans uppdrag är troligen öppna.
+        `${gw}/api/jobsearch/landing-page-job-requests`,
+        `${gw}/api/jobsearch?page={page}&pageSize=50`,
+        `${gw}/api/jobsearch?pageNumber={page}&pageSize=50`,
+        `${gw}/api/jobsearch`,
       ].filter((u): u is string => !!u),
     ),
   ];

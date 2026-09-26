@@ -7,6 +7,8 @@ import { mapJobObject, str, type Obj } from "./job-json.ts";
 //   https://magnit-source.magnitglobal.com/
 // Sajten är global; appen filtrerar fram uppdrag i Sverige.
 export const MAGNIT_BASE = "https://magnit-source.magnitglobal.com";
+// Sajtens API-server (OPENMARKET_API_BASE_URL i sajtens JavaScript, 2026-09-26).
+export const MAGNIT_GATEWAY = process.env.MAGNIT_GATEWAY_URL ?? "https://app-openmarketgateway-prod.azurewebsites.net";
 
 // Tänkbara adressmönster för ett enskilt uppdrag (sajtens struktur är inte känd än).
 const JOB_RE =
