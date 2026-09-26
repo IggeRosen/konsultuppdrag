@@ -132,3 +132,47 @@ test("riktigt listkort (2026-09-26): rubrik med tankstreck och kund", () => {
   assert.equal(a.company, "Tornberget Fastighetsförvaltnings AB");
   assert.equal(a.url, "https://www.keyman.se/sv/data-it/inkops-och-upphandlingsansvarig-tornberget-fastighetsforvaltnings-ab-16401");
 });
+
+import { parseKeymanHeader, stockholmDate } from "../src/lib/sources/keyman-parse.ts";
+
+// Text och meta från https://www.keyman.se/sv/data-it/project-manager-coordinator-postnord-group-16398 (2026-09-26).
+const REAL_TEXT =
+  "Project Manager & Coordinator – POSTNORD GROUP september 24, 2026 Roll IT Projektledare Kompetensområde Data/IT Startdatum 2026-10-01 Slutdatum 2027-09-30 Omfattning 100% Ort Stockholm Land Sweden Sista svarsdatum 2026-09-29 (Offerter kommer att behandlas löpande) Kontaktperson Melita Landgraff ( postnord@keyman.se | ) Referensnummer #16398 Övergripande uppdragsbeskrivning About the assignment This assignment is split somewhat 50/25/25 between three tasks. Postnord Group AB operates on the principle of flexible workplaces but with a physical presence of 3 days a week. Task 1 – A project lead role tasked with the planning and rollout of Microsoft Teams on production phones utilizing SSO.";
+
+test("faktablocket på en riktig uppdragssida", () => {
+  const h = parseKeymanHeader(REAL_TEXT);
+  assert.equal(h.role, "IT Projektledare");
+  assert.equal(h.area, "Data/IT");
+  assert.equal(h.start, "2026-10-01");
+  assert.equal(h.end, "2027-09-30");
+  assert.equal(h.extent, "100%");
+  assert.equal(h.city, "Stockholm");
+  assert.equal(h.country, "Sweden");
+  assert.equal(h.deadline, "2026-09-29 (Offerter kommer att behandlas löpande)");
+  assert.equal(h.reference, "#16398");
+  assert.ok(REAL_TEXT.slice(h.bodyStart).trim().startsWith("About the assignment"));
+});
+
+test("riktig detaljsida: alla fält", () => {
+  const html = `<html><head><title>Project Manager &amp; Coordinator - POSTNORD GROUP - KeyMan</title>
+    <meta property="article:published_time" content="2026-09-23T22:00:00+00:00"></head>
+    <body><header>Hoppa till innehåll</header><main><div class="elementor-widget-container">${REAL_TEXT}</div></main></body></html>`;
+  const d = parseKeymanDetail(html, "https://www.keyman.se/sv/data-it/project-manager-coordinator-postnord-group-16398");
+  assert.equal(d.title, "Project Manager & Coordinator");
+  assert.equal(d.company, "Postnord Group");
+  assert.equal(d.location, "Stockholm");
+  assert.equal(d.extent, "100%");
+  assert.equal(d.published, "2026-09-24", "svensk tid, inte UTC");
+  assert.equal(d.start, "2026-10-01");
+  assert.equal(d.end, "2027-09-30");
+  assert.equal(d.deadline, "2026-09-29");
+  assert.match(d.description!, /^Kategori: Data\/IT\. Roll: IT Projektledare\. About the assignment/);
+  assert.doesNotMatch(d.description!, /Melita|postnord@keyman\.se/, "kontaktuppgifter ska inte med");
+});
+
+test("svensk tid och okategoriserade adresser", () => {
+  assert.equal(stockholmDate("2026-09-23T22:00:00+00:00"), "2026-09-24");
+  assert.equal(stockholmDate("2026-09-23T10:00:00+00:00"), "2026-09-23");
+  assert.equal(keymanCategory("https://www.keyman.se/sv/uncategorized/project-manager-coordinator-postnord-group-16398/"), undefined);
+  assert.equal(extractKeymanId("https://www.keyman.se/sv/uncategorized/project-manager-coordinator-postnord-group-16398/"), "16398");
+});
