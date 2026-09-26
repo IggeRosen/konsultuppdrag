@@ -124,12 +124,29 @@ test("sök-API:ts uppdrag", () => {
   assert.deepEqual(items.filter(isSwedish).map((a) => a.id), ["emagine:180500"]);
 });
 
+// Riktigt svar från GET https://portal-api.emagine.org/api/JobAds/details/180586/En (2026-09-26, förkortat).
 test("detaljer ur API:t", () => {
   const d = parseEmagineApiDetail({
-    id: 180500,
-    title: "Senior Java-utvecklare",
-    description: "<p>Vi söker en <b>senior</b> Java-utvecklare till ett stort bolag i Stockholm.</p>",
-    requirements: "<ul><li>10 års erfarenhet av Java och Spring Boot</li></ul>",
+    id: 180586,
+    title: "Kravanalytiker – Icke-funktionella krav (NFR)",
+    description:
+      "<p><strong>emagine söker: Kravanalytiker – Icke-funktionella krav (NFR)<br></strong></p><p><strong>Uppdraget</strong><br>Vår kund inom försäkringssektorn genomför en affärskritisk transformation.</p><p><strong>Rollen</strong><br>Fokus ligger på områden som:</p><ul><li><p>Prestanda och kapacitet</p></li><li><p>Tillgänglighet och driftsäkerhet</p></li></ul><p>Omfattning: 100 %<br>Placering: Stockholm (hybrid)</p>",
+    requestId: 319876,
+    duration: "7-9 months",
+    startDate: "ASAP",
+    status: "Open",
   });
-  assert.equal(d.description, "Vi söker en senior Java-utvecklare till ett stort bolag i Stockholm.\n\n10 års erfarenhet av Java och Spring Boot");
+  assert.equal(
+    d.description,
+    [
+      "Uppdraget",
+      "Vår kund inom försäkringssektorn genomför en affärskritisk transformation.",
+      "Rollen",
+      "Fokus ligger på områden som:",
+      "• Prestanda och kapacitet",
+      "• Tillgänglighet och driftsäkerhet",
+      "Omfattning: 100 %",
+      "Placering: Stockholm (hybrid)",
+    ].join("\n"),
+  );
 });
