@@ -133,28 +133,56 @@ export function parseEmagineJson(json: unknown): Assignment[] {
 }
 
 /**
- * Detaljer ur GET /api/JobAds/details/{id}/En. Svarets format är inte känt, så
- * texten tas ur alla fält som ser ut som beskrivningar (HTML rensas).
+ * HTML → läsbar text: stycken och rubriker på egna rader, listpunkter med "• ".
+ * (cheerio.text() klistrar ihop blocken: "…(NFR)UppdragetVår kund…".)
+ */
+export function emagineHtmlToText(html: string): string {
+  const withBreaks = html
+    .replace(/<li[^>]*>/gi, "\n• ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|ul|ol|h[1-6]|tr)>/gi, "\n");
+  return cheerio
+    .load(withBreaks)
+    .text()
+    .split("\n")
+    .map((line) => clean(line))
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Detaljer ur GET /api/JobAds/details/{id}/En (2026-09-26): { id, title, description (HTML),
+ * requestId, duration, startDate, status, area, industry, seniority, langaugeProficiency,
+ * isPartTime, jobAdWorkLocation, … }. Beskrivningen börjar ofta med "emagine söker: <titel>",
+ * som tas bort eftersom titeln redan visas.
  */
 export function parseEmagineApiDetail(json: unknown): Partial<Assignment> {
   if (!json || typeof json !== "object") return {};
+  const o = json as Obj;
+  const title = str(o.title);
   const texts: string[] = [];
   walk(json, (node) => {
     for (const [k, v] of Object.entries(node)) {
       if (typeof v !== "string" || v.length < 40) continue;
       if (!/description|about|task|responsib|requirement|qualif|offer|profile|content|body|text/i.test(k)) continue;
-      const t = clean(cheerio.load(v).text().replace(/\s+/g, " "));
+      const t = emagineHtmlToText(v);
       if (t && !texts.includes(t)) texts.push(t);
     }
   });
-  const base = mapJobObject(json as Obj, OPTS);
+  let description = texts.join("\n");
+  const [firstLine, ...rest] = description.split("\n");
+  if (rest.length && /^emagine (söker|is looking for|seeks|søger|søker)\b/i.test(firstLine) && (!title || firstLine.includes(title.slice(0, 20)))) {
+    description = rest.join("\n");
+  }
+  const seniority = str(o.seniority) ?? (o.seniority && typeof o.seniority === "object" ? str((o.seniority as Obj).name) : undefined);
+  const base = mapJobObject(o, OPTS);
   return stripEmpty({
     company: base?.company,
     deadline: base?.deadline,
     published: base?.published,
     rate: base?.rate,
     end: base?.end,
-    description: texts.join("\n\n").slice(0, 3000) || undefined,
+    description: [seniority && `Senioritet: ${seniority}.`, description].filter(Boolean).join("\n").slice(0, 3000) || undefined,
   });
 }
 
