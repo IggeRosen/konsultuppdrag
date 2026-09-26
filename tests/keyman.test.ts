@@ -115,3 +115,20 @@ test("paginering med WordPress-stilen /page/N/", async () => {
     globalThis.fetch = original;
   }
 });
+
+test("kategorinamn från riktiga adresser", () => {
+  assert.equal(keymanCategory("/sv/chefs-och-ledarskapsstod/chefshandledning-samt-stod-till-ledningsgrupp-16394"), "Chefs- och ledarskapsstöd");
+  assert.equal(keymanCategory("/sv/management/kvalificerat-stod-till-rektor-vux-yrkesvux-till-nynashamns-kommun-16399"), "Management");
+  assert.equal(keymanCategory("/sv/projekt-och-forandringsledning/x-16500"), "Projekt och forandringsledning");
+});
+
+test("riktigt listkort (2026-09-26): rubrik med tankstreck och kund", () => {
+  const html = `<div class="elementor-element e-con-boxed"><div class="e-con-inner"><div class="elementor-widget-heading">
+    <p class="elementor-heading-title elementor-size-default"><a href="https://www.keyman.se/sv/data-it/inkops-och-upphandlingsansvarig-tornberget-fastighetsforvaltnings-ab-16401/">Inköps- och upphandlingsansvarig – Tornberget Fastighetsförvaltnings AB</a></p>
+  </div></div></div>`;
+  const [a] = parseKeymanListing(html);
+  assert.equal(a.id, "keyman:16401");
+  assert.equal(a.title, "Inköps- och upphandlingsansvarig");
+  assert.equal(a.company, "Tornberget Fastighetsförvaltnings AB");
+  assert.equal(a.url, "https://www.keyman.se/sv/data-it/inkops-och-upphandlingsansvarig-tornberget-fastighetsforvaltnings-ab-16401");
+});

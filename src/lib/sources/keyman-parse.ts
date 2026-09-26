@@ -28,8 +28,15 @@ export function keymanCategory(href: string): string | undefined {
     "data-it": "Data/IT",
     "administration-ekonomi-juridik": "Administration, ekonomi & juridik",
     "hr-kompetensforsorjning": "HR & kompetensförsörjning",
+    "chefs-och-ledarskapsstod": "Chefs- och ledarskapsstöd",
+    "inkop-upphandling": "Inköp & upphandling",
+    "teknik-engineering": "Teknik & engineering",
+    "interimschefer": "Interimschefer",
   };
-  return special[slug] ?? slug.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+  if (special[slug]) return special[slug];
+  // Okänd kategori: "projekt-och-forandringsledning" → "Projekt och forandringsledning" (versal bara först).
+  const words = slug.split("-").filter(Boolean);
+  return words.map((w, i) => (i === 0 ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
 }
 
 /** Kanonisk adress: svenska versionen utan avslutande snedstreck. */
