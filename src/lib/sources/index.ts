@@ -3,12 +3,13 @@ import { brainville } from "./brainville.ts";
 import { cinode } from "./cinode.ts";
 import { ework } from "./ework.ts";
 import { keyman } from "./keyman.ts";
+import { magnit } from "./magnit.ts";
 
 /**
  * Registrerade uppdragsportaler. Lägg till en ny källa genom att skapa en
  * adapter (se brainville.ts) och lägga till den här.
  */
-export const SOURCES: SourceAdapter[] = [brainville, cinode, ework, keyman];
+export const SOURCES: SourceAdapter[] = [brainville, cinode, ework, keyman, magnit];
 
 /** Portaler som planeras men ännu inte är implementerade – visas i UI:t. */
-export const PLANNED_SOURCES = ["Magnit", "Emagine"];
+export const PLANNED_SOURCES = ["Emagine"];
