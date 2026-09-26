@@ -46,6 +46,7 @@ async function postSearch(body: unknown) {
       Origin: EMAGINE_PORTAL,
       Referer: `${EMAGINE_PORTAL}/jobs`,
       "Accept-Language": "en-US,en;q=0.9",
+      Cookie: "CurrentUiLang=EN",
     },
     body: JSON.stringify(body),
     timeoutMs: 8000,

@@ -18,7 +18,7 @@ const SKIP_KEY = /^(skip|skipCount|offset|from|start)$/i;
  * Startförfrågningar. Formatet är portalens eget (proxySearchAllJobs i
  * chunk-CU2XS2X6.js, 2026-09-26): { skipCount, maxResultCount, sorting, filter,
  * supportedLanguageId }, där sorting är t.ex. "CreationTime desc" (NewestFirst i
- * chunk-JD6HBCB5.js). Språkets id är inte känt (se serverErrorVariants); saknas
+ * chunk-JD6HBCB5.js). Språket är "En" (se serverErrorVariants för reserver); saknas
  * något som krävs kompletteras det ur valideringsfelen.
  */
 export function seedBodies(): Json[] {
@@ -33,7 +33,9 @@ export function seedBodies(): Json[] {
     consultantSeniorities: [],
     languageProficiencies: [],
   };
-  return [{ skipCount: 0, maxResultCount: EMAGINE_PAGE_SIZE, sorting: "CreationTime desc", filter, supportedLanguageId: 1 }];
+  // Språket är en enum med textvärden (H.En, e.De, e.Fr i portalens JavaScript;
+  // kakan CurrentUiLang sätts till "EN"), inte ett numeriskt id.
+  return [{ skipCount: 0, maxResultCount: EMAGINE_PAGE_SIZE, sorting: "CreationTime desc", filter, supportedLanguageId: "En" }];
 }
 
 const camel = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -206,10 +208,10 @@ export function languageOrder(langs: EmagineLanguage[]): number[] {
  * Varianter att prova när förfrågan klarar valideringen men servern svarar 5xx:
  * andra språk-id, mindre sida, utan språk.
  */
-export function serverErrorVariants(body: Json, languageIds: number[]): Json[] {
+export function serverErrorVariants(body: Json, languageIds: (number | string)[]): Json[] {
   const out: Json[] = [];
-  const ids = [...new Set([...languageIds, 1, 2, 0])].filter((id) => id !== body.supportedLanguageId);
-  for (const id of ids.slice(0, 6)) out.push({ ...body, supportedLanguageId: id });
+  const ids = [...new Set<number | string>([...languageIds, "En", "EN", "en", 1, 0])].filter((id) => id !== body.supportedLanguageId);
+  for (const id of ids.slice(0, 7)) out.push({ ...body, supportedLanguageId: id });
   out.push({ ...body, maxResultCount: 20 });
   const { supportedLanguageId: _drop, ...noLang } = body;
   if ("supportedLanguageId" in body) out.push(noLang);

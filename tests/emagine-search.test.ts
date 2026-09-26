@@ -62,6 +62,7 @@ test("språk ur ng-state och varianter vid serverfel", () => {
   assert.deepEqual(langs.map((l) => l.id), [3, 5, 7]);
   assert.deepEqual(languageOrder(langs), [5, 7, 3]);
   const v = serverErrorVariants({ filter: {}, supportedLanguageId: 1 }, [5, 7, 3]);
-  assert.deepEqual(v.map((b) => b.supportedLanguageId), [5, 7, 3, 2, 0, 1, undefined]);
-  assert.equal(v[5].maxResultCount, 20);
+  assert.deepEqual(v.map((b) => b.supportedLanguageId), [5, 7, 3, "En", "EN", "en", 0, 1, undefined]);
+  assert.equal(v[7].maxResultCount, 20);
+  assert.equal(seedBodies()[0].supportedLanguageId, "En");
 });
