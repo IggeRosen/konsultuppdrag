@@ -54,8 +54,9 @@ test("Sverigefilter", () => {
   assert.equal(isSwedish({ location: "Stockholm, Sweden" }), true);
   assert.equal(isSwedish({ location: "London" }), false);
   assert.equal(isSwedish({}), true, "okänd plats behålls");
-  assert.equal(magnitUrl("A B"), "https://magnit-source.magnitglobal.com/api/share/job/A%20B");
-  assert.equal(magnitUrl("eab154c5-c4fd-1dc5-8b26-9e39457965ca"), "https://magnit-source.magnitglobal.com/api/share/job/eab154c5-c4fd-1dc5-8b26-9e39457965ca");
+  assert.equal(magnitUrl("A B"), "https://magnit-source.magnitglobal.com/browse/job/A%20B");
+  assert.equal(magnitUrl("eab154c5-c4fd-1dc5-8b26-9e39457965ca"), "https://magnit-source.magnitglobal.com/browse/job/eab154c5-c4fd-1dc5-8b26-9e39457965ca");
+  assert.equal(extractMagnitId("https://magnit-source.magnitglobal.com/browse/job/eab154c5-c4fd-1dc5-8b26-9e39457965ca"), "eab154c5-c4fd-1dc5-8b26-9e39457965ca");
   assert.equal(extractMagnitId("https://magnit-source.magnitglobal.com/api/share/job/eab154c5-c4fd-1dc5-8b26-9e39457965ca?redirectPath=%2Fx"), "eab154c5-c4fd-1dc5-8b26-9e39457965ca");
 });
 
