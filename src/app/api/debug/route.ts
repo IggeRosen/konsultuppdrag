@@ -9,6 +9,8 @@ import { findNextPage } from "@/lib/parse-utils";
 import { extractVeramaId, parseVeramaDetail, parseVeramaHtml } from "@/lib/sources/ework-parse";
 import { probeEworkApi } from "@/lib/sources/ework";
 import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
+import { extractMagnitId, parseMagnitDetail, parseMagnitHtml } from "@/lib/sources/magnit-parse";
+import { probeMagnitApi } from "@/lib/sources/magnit";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -18,6 +20,7 @@ const SITES = [
   { host: "verama.com", parse: parseVeramaHtml, extractId: extractVeramaId },
   { host: "eworkgroup.com", parse: parseVeramaHtml, extractId: extractVeramaId },
   { host: "keyman.se", parse: parseKeymanListing, extractId: extractKeymanId },
+  { host: "magnitglobal.com", parse: parseMagnitHtml, extractId: extractMagnitId },
 ];
 
 export const runtime = "nodejs";
@@ -31,7 +34,7 @@ export const dynamic = "force-dynamic";
  * Visar vad scrapern ser på en sida. Endast de sajter som finns i SITES tillåts.
  * Lägg till &full=1 för att få med hela HTML:en.
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
- * Verama: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
+ * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
  * utdrag runt ord som "cursor", "fetch" och "load-more".
  */
@@ -118,8 +121,10 @@ export async function GET(req: Request) {
     ].slice(0, 60);
 
     const isVerama = site.host === "verama.com" || site.host === "eworkgroup.com";
-    const cursor = site.host === "brainville.com" || isVerama ? null : extractNextCursor(res.body, res.headers);
-    const apiProbe = isVerama && params.get("probe") === "1" ? await probeEworkApi() : undefined;
+    const cursor = site.host === "brainville.com" || isVerama || site.host === "magnitglobal.com" ? null : extractNextCursor(res.body, res.headers);
+    const isMagnit = site.host === "magnitglobal.com";
+    const apiProbe =
+      params.get("probe") === "1" ? (isVerama ? await probeEworkApi() : isMagnit ? await probeMagnitApi() : undefined) : undefined;
     const loadMoreProbe =
       cursor && params.get("probe") === "1"
         ? await probeLoadMore(res.url, cursor, new Set(items.map((a) => a.id)))
@@ -135,7 +140,11 @@ export async function GET(req: Request) {
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: site.host === "keyman.se"
+      detail: site.host === "magnitglobal.com"
+        ? extractMagnitId(res.url)
+          ? parseMagnitDetail(res.body)
+          : undefined
+        : site.host === "keyman.se"
         ? extractKeymanId(res.url)
           ? parseKeymanDetail(res.body, res.url)
           : undefined

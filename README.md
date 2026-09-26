@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama) och **KeyMan**.
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan** och **Magnit** (Magnit Source).
 
 ## Funktioner
 
@@ -23,6 +23,10 @@ src/lib/sources/ework.ts             Ework/Verama (JSON-API + listsida + sitemap
 src/lib/sources/ework-parse.ts       tolkning av Veramas JSON och HTML
 src/lib/sources/keyman.ts            KeyMan (listsida + sitemap + detaljsidor)
 src/lib/sources/keyman-parse.ts      tolkning av keyman.se
+src/lib/sources/magnit.ts            Magnit Source (JSON-API + HTML + sitemap + detaljsidor, Sverigefilter)
+src/lib/sources/magnit-parse.ts      tolkning av Magnit Source
+src/lib/sources/job-json.ts          generell tolkning av uppdragsobjekt i JSON (Verama, Magnit)
+src/lib/json-api.ts                  generell sondering och paginering av JSON-API:er
 src/lib/sitemap.ts                   delad sitemap-läsning
 src/lib/sources/cinode-parse.ts      ren HTML-tolkning för Cinode
 src/lib/parse-utils.ts               delade tolkningshjälpare (kort, JSON, JSON-LD, nästa sida)
@@ -97,6 +101,19 @@ Ett uppdrag har adressen `/sv/<kategori>/<titel>-<id>`. Appen läser:
 
 Kategorin ur adressen (t.ex. Data/IT) läggs i beskrivningen. Utgångna uppdrag filtreras bort.
 
+### Magnit
+
+Magnit publicerar alla sina uppdrag öppet på [Magnit Source](https://magnit-source.magnitglobal.com/).
+Sajten är global, så appen visar bara uppdrag i Sverige (eller med okänd plats). Sätt
+`MAGNIT_ALL_COUNTRIES=1` för att visa alla. Appen läser:
+
+1. JSON-API: tänkbara adresser provas och den som svarar med uppdrag används, med paginering,
+   max `MAGNIT_MAX_PAGES` = 6. Adressen kan sättas med `MAGNIT_API_URL` (`{page}` = sidnummer från 0).
+   Se vad som svarar med `/api/debug?url=https://magnit-source.magnitglobal.com/&probe=1`.
+2. Startsidans HTML: inbäddad JSON (t.ex. `__NEXT_DATA__`) och uppdragslänkar
+3. Sitemapen, om inget annat gav uppdrag
+4. Detaljsidor för uppdrag som saknar titel eller beskrivning, max `MAGNIT_MAX_DETAILS` = 60
+
 ### Lägga till en ny portal
 
 Skapa `src/lib/sources/<portal>.ts` som exporterar en `SourceAdapter`
@@ -114,7 +131,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_API_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_SITEMAP`, `MAGNIT_MAX_DETAILS`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida

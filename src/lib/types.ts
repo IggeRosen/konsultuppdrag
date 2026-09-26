@@ -6,6 +6,8 @@ export interface Assignment {
   url: string;
   company?: string;
   location?: string;
+  /** Land (t.ex. "SE" eller "Sverige") när källan anger det – används för att filtrera */
+  country?: string;
   published?: string;
   deadline?: string;
   start?: string;
