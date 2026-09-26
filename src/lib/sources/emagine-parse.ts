@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import type { Assignment } from "../types.ts";
 import { cardFields, clean, DATE_RE, extractJobPosting, findCards, findJsonBlobs, spacedText, stripEmpty, walk } from "../parse-utils.ts";
-import { mapJobObject, type Obj } from "./job-json.ts";
+import { mapJobObject, str, type Obj } from "./job-json.ts";
 import { swedishPlace } from "./cinode-parse.ts";
 
 // emagine publicerar uppdrag för frilanskonsulter i sin portal:
@@ -64,14 +64,98 @@ const OPTS = {
     emagineUrl(id, typeof o.url === "string" ? o.url : undefined, [o.title, o.jobTitle, o.name].find((t): t is string => typeof t === "string")),
 };
 
+const WORK_MODES: Record<string, string> = { remote: "Distans", onsite: "På plats", hybrid: "Hybrid" };
+
+/** "12.10.2026" → "2026-10-12"; "ASAP"/"N/A" → startText. */
+function emagineStart(v: unknown): Pick<Assignment, "start" | "startText"> {
+  const s = typeof v === "string" ? v.trim() : "";
+  const dmy = s.match(/^(\d{1,2})\.(\d{1,2})\.(20\d{2})$/);
+  if (dmy) return { start: `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}` };
+  if (/^asap$/i.test(s)) return { startText: "Snarast" };
+  if (!s || /^n\/?a$/i.test(s)) return {};
+  return { start: s.match(/20\d{2}-\d{2}-\d{2}/)?.[0], startText: s.match(/20\d{2}-\d{2}-\d{2}/) ? undefined : s };
+}
+
+/** "1-3 months" → "1–3 månader", "> 12 months" → "> 12 månader". */
+function emagineDuration(v: unknown): string | undefined {
+  const s = typeof v === "string" ? clean(v) : "";
+  if (!s || /^n\/?a$/i.test(s)) return undefined;
+  return s
+    .replace(/(\d)\s*-\s*(\d)/g, "$1–$2")
+    .replace(/\bmonths?\b/i, "månader")
+    .replace(/\bweeks?\b/i, "veckor")
+    .replace(/\byears?\b/i, "år");
+}
+
+const nameIn = (v: unknown) => (v && typeof v === "object" ? str((v as Obj).name) : undefined);
+
+/**
+ * Ett uppdrag i sökresultatet från POST /api/JobAds/Search (2026-09-26):
+ *   { id, title, startDate: "12.10.2026"|"ASAP"|"N/A", duration: "1-3 months", requestId,
+ *     isPartTime, jobAdWorkLocation: { workLocationType: "Remote"|"Onsite"|"Hybrid",
+ *     city, region, country: "Norway" }, area: { name }, industry: { name } }
+ */
+export function mapEmagineJob(o: Obj): Assignment | null {
+  const loc = o.jobAdWorkLocation;
+  if (!loc || typeof loc !== "object" || (typeof o.id !== "number" && !/^\d+$/.test(String(o.id ?? "")))) return null;
+  const title = str(o.title);
+  if (!title) return null;
+  const id = String(o.id);
+  const l = loc as Obj;
+  const city = str(l.city) ?? str(l.region);
+  const country = str(l.country);
+  const mode = typeof l.workLocationType === "string" ? WORK_MODES[l.workLocationType.toLowerCase()] : undefined;
+  const area = nameIn(o.area);
+  const industry = nameIn(o.industry);
+  return stripEmpty({
+    id: `emagine:${id}`,
+    source: "emagine",
+    title,
+    url: emagineUrl(id, undefined, title),
+    location: city ? swedishPlace(city) : country === "Sweden" ? "Sverige" : country,
+    country,
+    workMode: mode,
+    ...emagineStart(o.startDate),
+    duration: emagineDuration(o.duration),
+    extent: o.isPartTime === true ? "Deltid" : undefined,
+    description: [area && `Område: ${area}.`, industry && `Bransch: ${industry}.`].filter(Boolean).join(" ") || undefined,
+  }) as Assignment;
+}
+
 /** Uppdrag i godtycklig JSON (API-svar eller inbäddad data). */
 export function parseEmagineJson(json: unknown): Assignment[] {
   const byId = new Map<string, Assignment>();
   walk(json, (node) => {
-    const a = mapJobObject(node, OPTS);
+    const a = mapEmagineJob(node) ?? mapJobObject(node, OPTS);
     if (a && !byId.has(a.id)) byId.set(a.id, a);
   });
   return [...byId.values()];
+}
+
+/**
+ * Detaljer ur GET /api/JobAds/details/{id}/En. Svarets format är inte känt, så
+ * texten tas ur alla fält som ser ut som beskrivningar (HTML rensas).
+ */
+export function parseEmagineApiDetail(json: unknown): Partial<Assignment> {
+  if (!json || typeof json !== "object") return {};
+  const texts: string[] = [];
+  walk(json, (node) => {
+    for (const [k, v] of Object.entries(node)) {
+      if (typeof v !== "string" || v.length < 40) continue;
+      if (!/description|about|task|responsib|requirement|qualif|offer|profile|content|body|text/i.test(k)) continue;
+      const t = clean(cheerio.load(v).text().replace(/\s+/g, " "));
+      if (t && !texts.includes(t)) texts.push(t);
+    }
+  });
+  const base = mapJobObject(json as Obj, OPTS);
+  return stripEmpty({
+    company: base?.company,
+    deadline: base?.deadline,
+    published: base?.published,
+    rate: base?.rate,
+    end: base?.end,
+    description: texts.join("\n\n").slice(0, 3000) || undefined,
+  });
 }
 
 // Etiketter som förekommer på listkort och uppdragssidor (svenska och engelska).

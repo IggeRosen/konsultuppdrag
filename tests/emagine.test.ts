@@ -8,6 +8,7 @@ import {
   emagineUrl,
   extractEmagineId,
   isClosed,
+  parseEmagineApiDetail,
   parseEmagineDetail,
   parseEmagineJson,
   parseEmagineListing,
@@ -83,4 +84,52 @@ test("slug och adress som portalen", () => {
   assert.equal(emagineUrl("179236", undefined, "2 Systemutvecklare med AI-kompetens inom vården"), "https://portal.emagine.org/jobs/179236/2-systemutvecklare-med-ai-kompetens-inom-vrden");
   const [a] = parseEmagineJson({ totalCount: 1, items: [{ id: 179236, title: "Senior Java-utvecklare", location: "Stockholm", description: "Vi söker en utvecklare." }] });
   assert.equal(a.url, "https://portal.emagine.org/jobs/179236/senior-java-utvecklare");
+});
+
+// Riktigt svar från POST https://portal-api.emagine.org/api/JobAds/Search (2026-09-26, förkortat).
+const SEARCH_RESPONSE = {
+  items: [
+    { id: 180597, title: "Samfunnsøkonomisk analyse av innføring av Single Digital Gateway ", startDate: "12.10.2026", duration: "1-3 months", requestId: 319887, isPartTime: false, jobAdWorkLocation: { workLocationType: "Remote", city: null, region: null, country: "Norway" }, area: { id: 2135, name: "Strategy & Transformation" }, industry: { id: 7428, name: "Government" }, isJobSaved: false, applicationDate: null },
+    { id: 180595, title: "Expert Informatica (h/f)", startDate: "ASAP", duration: "> 12 months", requestId: 319885, isPartTime: false, jobAdWorkLocation: { workLocationType: "Hybrid", city: "Paris", region: null, country: "France" }, area: { id: 2140, name: "Data & Analytics" }, industry: { id: 7431, name: "Insurance / Pension" }, isJobSaved: false, applicationDate: null },
+    { id: 180591, title: "Engenheiro Expert MERN Full-Stack", startDate: "N/A", duration: "4-6 months", requestId: 319870, isPartTime: true, jobAdWorkLocation: { workLocationType: "Onsite", city: "Lisbon", region: null, country: "Portugal" }, area: { id: 2137, name: "Software Development" }, industry: null, isJobSaved: false, applicationDate: null },
+    { id: 180500, title: "Senior Java-utvecklare", startDate: "ASAP", duration: "7-9 months", requestId: 319800, isPartTime: false, jobAdWorkLocation: { workLocationType: "Hybrid", city: "Stockholm", region: null, country: "Sweden" }, area: { id: 2137, name: "Software Development" }, industry: null, isJobSaved: false, applicationDate: null },
+  ],
+  totalCount: 1234,
+};
+
+test("sök-API:ts uppdrag", () => {
+  const items = parseEmagineJson(SEARCH_RESPONSE);
+  assert.equal(items.length, 4);
+  const [no, fr, pt, se] = items;
+  assert.deepEqual(no, {
+    id: "emagine:180597",
+    source: "emagine",
+    title: "Samfunnsøkonomisk analyse av innføring av Single Digital Gateway",
+    url: "https://portal.emagine.org/jobs/180597/samfunnskonomisk-analyse-av-innfring-av-single-digital-gateway",
+    location: "Norway",
+    country: "Norway",
+    workMode: "Distans",
+    start: "2026-10-12",
+    duration: "1–3 månader",
+    description: "Område: Strategy & Transformation. Bransch: Government.",
+  });
+  assert.equal(fr.startText, "Snarast");
+  assert.equal(fr.duration, "> 12 månader");
+  assert.equal(fr.workMode, "Hybrid");
+  assert.equal(pt.start, undefined);
+  assert.equal(pt.startText, undefined);
+  assert.equal(pt.extent, "Deltid");
+  assert.equal(pt.workMode, "På plats");
+  assert.equal(se.location, "Stockholm");
+  assert.deepEqual(items.filter(isSwedish).map((a) => a.id), ["emagine:180500"]);
+});
+
+test("detaljer ur API:t", () => {
+  const d = parseEmagineApiDetail({
+    id: 180500,
+    title: "Senior Java-utvecklare",
+    description: "<p>Vi söker en <b>senior</b> Java-utvecklare till ett stort bolag i Stockholm.</p>",
+    requirements: "<ul><li>10 års erfarenhet av Java och Spring Boot</li></ul>",
+  });
+  assert.equal(d.description, "Vi söker en senior Java-utvecklare till ett stort bolag i Stockholm.\n\n10 års erfarenhet av Java och Spring Boot");
 });
