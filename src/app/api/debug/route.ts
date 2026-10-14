@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import { fetchText } from "@/lib/http";
-import { extractRequisitionId, parseListing } from "@/lib/sources/brainville-parse";
+import { extractRequisitionId, parseDetail as parseBrainvilleDetail, parseListing } from "@/lib/sources/brainville-parse";
 import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/sources/cinode-parse";
 import { extractNextCursor } from "@/lib/sources/cinode-parse";
 import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
@@ -33,7 +33,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Felsökning: /api/debug?url=https://www.brainville.com/PublicPage/RequisitionSearch
+ * Felsökning: /api/debug?url=https://www.brainville.com/sv/RequisitionSearch
  *             /api/debug?url=https://cinode.market/requests
  *             /api/debug?url=https://app.verama.com/sv/job-requests&probe=1
  *             /api/debug?url=https://www.keyman.se/sv/uppdrag/
@@ -49,7 +49,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
-  const target = params.get("url") ?? "https://www.brainville.com/PublicPage/RequisitionSearch?lang=sv";
+  const target = params.get("url") ?? "https://www.brainville.com/sv/RequisitionSearch?lang=sv";
   let u: URL;
   try {
     u = new URL(target);
@@ -296,7 +296,11 @@ export async function GET(req: Request) {
         ? extractVeramaId(res.url)
           ? parseVeramaDetail(res.body)
           : undefined
-        : site.host !== "brainville.com" && extractCinodeId(res.url)
+        : site.host === "brainville.com"
+        ? extractRequisitionId(res.url)
+          ? parseBrainvilleDetail(res.body)
+          : undefined
+        : extractCinodeId(res.url)
           ? parseCinodeDetail(res.body)
           : undefined,
       sample: items.slice(0, 5),

@@ -2,7 +2,7 @@
 // inte på en sparad kopia av sajten. Uppdatera med riktig HTML via /api/debug.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractRequisitionId, parseDetail, parseDocumentTitle, parseListing } from "../src/lib/sources/brainville-parse.ts";
+import { brainvilleAgeDate, extractRequisitionId, parseDetail, parseDocumentTitle, parseListing } from "../src/lib/sources/brainville-parse.ts";
 
 test("känner igen båda länkformaten", () => {
   assert.equal(extractRequisitionId("/Market/RequisitionSearchResult/Details/330877"), "330877");
@@ -127,4 +127,52 @@ test("söksidans nya träfflänkar och JSON-LD-lista", () => {
       ["brainville:367732", "Testledare", "https://www.brainville.com/sv/Requisition?id=367732"],
     ],
   );
+});
+
+// Riktigt kort från söksidan för "testledare" (listSnippet i /api/debug, 2026-10-14) + ett kort med
+// hybrid och kompetenstaggar (som Brainville visar under kortet).
+const CARD_VISBY = `<div class="l_gap_row_md l_flex l_flex_column l_flex_grow"> <div class="l_flex l_flex_justifycontent_spacebetween l_flex_align_start l_width_full"> <div class="l_width_full"> <div class="l_flex l_flex_justifycontent_spacebetween l_width_full l_flex_align_center l_gap_md l_height_min_28"> <div class="app_tags_wrapper app_tags_wrapper_small" data-font-size="small" data-font-variant="secondary"> <span class="app_margin_right_5"> <span>idag <span class="l_opacity_medium">15:57</span></span> </span> <span class="app_margin_right_5" title="Du är sen på bollen! Med Premium hade du sett detta uppdrag direkt. 68% av alla konsultuppdrag är brådskande enligt köparen. " data-tooltip=""> <span class="fas fa-exclamation-triangle app_color_brainville_yellow"></span> </span> </div> <div class="app_display_flex app_alignitems_flexend app_justifycontent_spacebetween app_height_100procent app_flex_direction_column"> <div class="app_display_flex app_gap_col_large app_gap_row_medium"> <span title="Logga in eller skapa ett konto för att kunna favoritmarkera uppdrag." data-tooltip="" class="fal fa-heart l_icon_size_md"></span> </div> </div> </div> <h3 data-font-type="title" data-font-size="medium" data-font-fluid="parent full_width"> <a href="/sv/Requisition?id=367981&amp;text=testledare" class="app_link_visited app_overflow_wrap_everywhere h_truncate_3">Testledare</a> </h3> <div data-flex="flex align_center gap_xs"> <div class="app_display_flex app_alignitems_center l_margin_top_6" data-font-size="small" data-font-variant="secondary" title="Visby, Gotlands län, Sweden" data-tooltip="" data-tooltip-position="left"> <span class="app_margin_right_2">Visby</span> </div> <div class="app_display_flex app_alignitems_center l_margin_top_6" data-font-size="small" data-font-variant="secondary"> </div> </div> </div> </div> <div class="l_flex l_flex_justifycontent_spacebetween l_flex_align_end l_width_full mo_hide"> <div> <div class="l_flex l_flex_justifycontent_spacebetween l_width_full l_margin_top_3"> <div class="c_chip__container"> <span class="c_chip c_chip_primary c_chip_md l_gap_0" title="<div><b>Startdatum</b><div>Nu</div>" data-tooltip=""> Start direkt </span> </div> </div> </div> <div> <div class="app_whitespace_nowrap " data-font-size="small" data-font-variant="secondary"> <div> <time datetime="2026-10-26"><span class="l_nowrap"><span>1</span>&nbsp;<span>vecka</span>&nbsp;<span>kvar</span></span></time> </div> </div> </div> </div> <div class="tags"><span>Ekonomi</span></div></div>`;
+const CARD_STHLM = `<div class="card"> <span><span>igår <span>16:23</span></span></span> <h3><a href="/sv/Requisition?id=367966&amp;text=testledare">Testare / Testledare / Testautomatiserare</a></h3> <div data-flex="flex"> <div title="Stockholm, Stockholms län, Sweden"><span>Stockholm</span></div> <div>Hybrid</div> </div> <div class="mo_hide"><span class="c_chip c_chip_primary">Start om om 1 månad</span><span class="c_chip">Längd ca. 12 months</span> <time datetime="2026-10-21"><span>1</span> <span>vecka</span> <span>kvar</span></time></div> <div class="mo_show"><span class="c_chip">Start om om 1 månad</span><span class="c_chip">Längd ca. 12 months</span><span>1 v</span></div> <div class="tags"><span>Systemutveckling</span><span>Testning</span><span>Automation</span></div> </div>`;
+
+test("söksidans nya kort: plats, datum, start, längd och kompetenser", () => {
+  const now = new Date("2026-10-14T16:00:00Z");
+  assert.equal(brainvilleAgeDate("idag 15:57", now), "2026-10-14");
+  assert.equal(brainvilleAgeDate("igår 16:23", now), "2026-10-13");
+  assert.equal(brainvilleAgeDate("3 okt", now), "2026-10-03");
+  const items = parseListing(`<div class="list"><div>${CARD_VISBY}</div><div>${CARD_STHLM}</div></div>`, "https://www.brainville.com/sv/RequisitionSearch?Text=testledare");
+  const [visby, sthlm] = items;
+  assert.equal(visby.title, "Testledare");
+  assert.equal(visby.location, "Visby");
+  assert.equal(visby.country, "Sweden");
+  assert.equal(visby.startText, "Omgående");
+  assert.equal(visby.deadline, "2026-10-26");
+  assert.equal(visby.description, "Kompetenser: Ekonomi");
+  assert.equal(visby.url, "https://www.brainville.com/sv/Requisition?id=367981");
+  assert.match(visby.published ?? "", /^20\d{2}-\d{2}-\d{2}$/);
+  assert.equal(sthlm.location, "Stockholm");
+  assert.equal(sthlm.workMode, "Hybrid");
+  assert.equal(sthlm.startText, "Om 1 månad");
+  assert.equal(sthlm.duration, "ca 12 månader");
+  assert.equal(sthlm.deadline, "2026-10-21");
+  assert.equal(sthlm.description, "Kompetenser: Systemutveckling, Testning, Automation");
+});
+
+// Uppdragssidan sedan oktober 2026: titel i BreadcrumbList, sajtens meny/sidfot i out_*-element.
+test("uppdragssidan: titel ur BreadcrumbList, menyn räknas inte som beskrivning", () => {
+  const crumbs = {
+    "@context": "http://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, item: { "@id": "https://www.brainville.com/konsultuppdrag", name: "Konsultuppdrag" } },
+      { "@type": "ListItem", position: 2, item: { "@id": "https://www.brainville.com/PublicPage/Requisition?id=367981", name: "Testledare" } },
+    ],
+  };
+  const menu = "Din roll Frilansare Hitta uppdrag och bli hittad av uppdragsgivare. Konsultbolag Sälj era konsulter och hitta bolagets nästa uppdrag. ".repeat(4);
+  const d = parseDetail(`<html><head><title>Marknadsplats</title><script type="application/ld+json">${JSON.stringify(crumbs)}</script></head><body>
+    <div class="out_topmenu"><div class="out_topmenu_panel">${menu}</div></div>
+    <div class="requisition"><h1>Testledare</h1><p>Vi söker en erfaren testledare till ett uppdrag hos en myndighet i Visby. Du leder testarbetet och samordnar testare.</p></div>
+    <footer class="out_footer">${menu}</footer></body></html>`);
+  assert.equal(d.title, "Testledare");
+  assert.match(d.description ?? "", /erfaren testledare/);
+  assert.doesNotMatch(d.description ?? "", /Din roll/);
 });
