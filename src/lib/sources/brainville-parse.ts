@@ -110,7 +110,8 @@ function brainvilleChip(text: string): { startText?: string; duration?: string }
   const en: Record<string, string> = { months: "månader", month: "månad", weeks: "veckor", week: "vecka", days: "dagar", day: "dag", years: "år", year: "år" };
   const sv = (s: string) => s.replace(/\b(months?|weeks?|days?|years?)\b/gi, (w) => en[w.toLowerCase()] ?? w);
   if (/^start\s+(direkt|omgående|nu|immediately)/i.test(t)) return { startText: "Omgående" };
-  const start = t.match(/^start\s+(?:(?:om|in)\s+)+(.+)$/i);
+  // "Start om om 1 månad" kan komma ihopklistrat ("Start omom 1 månad") när orden ligger i olika element.
+  const start = t.match(/^start\s*(?:(?:om|in)\s*)+(\d.*)$/i);
   if (start) return { startText: `Om ${sv(start[1])}` };
   const date = t.match(/^start\s+(.+)$/i);
   if (date) return { startText: sv(date[1]) };
@@ -152,9 +153,14 @@ export function parseBrainvilleCard($: cheerio.CheerioAPI, card: Cheerio, now = 
     if (node.children().length || node.closest("h3, time, .c_chip").length) return;
     const t = clean(node.text());
     if (!t || t.length > 40 || known.has(t) || metaDivs.some((d) => d.find(node).length)) return;
-    if (/^(idag|igår|i förrgår)\b|^\d{1,2}:\d{2}$|^\d+\s*(v|d|må|h|t|min|vecka|veckor|dag|dagar|månad|månader)$|kvar$|^(start|längd)\b/i.test(t)) return;
+    if (/^(idag|igår|i förrgår)\b|^\d{1,2}:\d{2}$|^\d+\s*(v|d|må|h|t|min|vecka|veckor|dag|dagar|månad|månader)$|kvar$|^(start|längd|length)\b/i.test(t)) return;
     if (/^\d+$/.test(t)) return;
     tags.add(t);
+  });
+  // Kompetenserna kan också vara c_chip; hela chippets text, utom start och längd.
+  card.find(".c_chip").each((_, el) => {
+    const t = clean($(el).text());
+    if (t && t.length <= 40 && !/^(start|längd|length)\b/i.test(t) && !/kvar$|^\d+\s*(v|d|må)$/i.test(t)) tags.add(t);
   });
 
   return stripEmpty({
@@ -257,7 +263,12 @@ export function parseDetail(html: string): Partial<Assignment> {
       const text = spacedText($, el);
       if (text.length > best.length && text.length < 8000) best = text;
     });
-  const description = (best.length > ogDesc.length ? best : ogDesc).slice(0, 2500);
+  // Utloggad visar Brainville (sedan oktober 2026) ingen uppdragstext, bara sajtens allmänna
+  // presentation ("Brainville sammanför köpare, säljare och förmedlare …"). Den används inte.
+  const description = [best, ogDesc]
+    .filter((t) => t && !GENERIC_TEXT.test(t))
+    .sort((a, b) => b.length - a.length)[0]
+    ?.slice(0, 2500) ?? "";
   const h1 = clean($("h1").first().text());
   const dates = [...description.matchAll(DATE_RE)].map((m) => m[1]);
 
@@ -268,6 +279,8 @@ export function parseDetail(html: string): Partial<Assignment> {
     start: dates[0],
   });
 }
+
+const GENERIC_TEXT = /Brainville sammanför köpare|en marknadsplats för alla konsultuppdrag|The Nordic marketplace for contractors|Brainville brings together buyers/i;
 
 /** Sista ledet i JSON-LD BreadcrumbList, t.ex. { item: { name: "Testledare" } } (uppdragssidan sedan oktober 2026). */
 function breadcrumbTitle($: cheerio.CheerioAPI): string | undefined {
