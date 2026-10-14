@@ -32,7 +32,17 @@ export function parseKeywords(raw: string | null | undefined): string[] {
  * Poängsätter uppdrag mot nyckelorden. Träff i titel väger tyngre än i
  * beskrivningen. Utan nyckelord returneras alla uppdrag (poäng 0).
  */
-export function matchAssignments(items: Assignment[], keywords: string[], mode: MatchMode = "any"): MatchedAssignment[] {
+/**
+ * `confirmed` anger uppdrag som en portals egen sökning har returnerat för ett
+ * nyckelord (id → nyckelord). De räknas som träff även om ordet bara står i text
+ * vi inte ser, t.ex. Brainvilles uppdragstext som kräver inloggning.
+ */
+export function matchAssignments(
+  items: Assignment[],
+  keywords: string[],
+  mode: MatchMode = "any",
+  confirmed: Map<string, Set<string>> = new Map(),
+): MatchedAssignment[] {
   const regs = keywords.map((k) => ({ k, re: keywordRegex(k) }));
   const out: MatchedAssignment[] = [];
   for (const a of items) {
@@ -44,7 +54,8 @@ export function matchAssignments(items: Assignment[], keywords: string[], mode: 
     const matched: string[] = [];
     for (const { k, re } of regs) {
       const inTitle = re.test(a.title);
-      const inBody = re.test(`${a.company ?? ""} ${a.location ?? ""} ${a.description ?? ""}`);
+      const inBody =
+        re.test(`${a.company ?? ""} ${a.location ?? ""} ${a.description ?? ""}`) || (confirmed.get(a.id)?.has(k) ?? false);
       if (inTitle || inBody) {
         matched.push(k);
         score += (inTitle ? 3 : 0) + (inBody ? 1 : 0);

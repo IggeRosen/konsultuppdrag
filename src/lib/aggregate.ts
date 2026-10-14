@@ -52,3 +52,23 @@ export async function collectAssignments(force = false) {
     inflight = null;
   }
 }
+
+/**
+ * Lägger till uppdrag från en källas nyckelordssökning: bara de som inte redan finns,
+ * och källans status får en rad om sökningen. Ändrar inte cachen.
+ */
+export function withKeywordResults(
+  data: { assignments: Assignment[]; sources: SourceStatus[] },
+  source: string,
+  items: Assignment[],
+  label: string,
+): { assignments: Assignment[]; sources: SourceStatus[]; added: number } {
+  const known = new Set(data.assignments.map((a) => a.id));
+  const fresh = items.filter((a) => !known.has(a.id));
+  const sources = data.sources.map((s) =>
+    s.source === source
+      ? { ...s, ok: s.ok || items.length > 0, count: s.count + fresh.length, strategies: [...s.strategies, `${label}: ${items.length} träffar, ${fresh.length} nya`] }
+      : s,
+  );
+  return { assignments: [...data.assignments, ...fresh], sources, added: fresh.length };
+}

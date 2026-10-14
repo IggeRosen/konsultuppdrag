@@ -54,7 +54,13 @@ läser de publika sidorna:
    ort, start, längd, omfattning och publiceringsdatum.
 2. Förmedlares "Tillgängliga uppdrag"-sidor `/sv/PublicProfile/Requisitions/<företag>`
    (Ework, KeyMan, Randstad m.fl. – ändra med `BRAINVILLE_COMPANY_IDS=648,7820,...`)
-3. Detaljsidor för varje uppdrag (för beskrivningstext), max `BRAINVILLE_MAX_DETAILS` (60)
+3. Detaljsidor för varje uppdrag (för beskrivningstext), max `BRAINVILLE_MAX_DETAILS` (60).
+   Utloggad visar Brainville sedan oktober 2026 ingen uppdragstext, bara titel.
+4. **Nyckelordssökning.** När någon söker i appen körs Brainvilles egen sökning
+   (`/sv/RequisitionSearch?Text=<ord>`) för varje nyckelord, max `BRAINVILLE_MAX_KEYWORDS` (8) ord
+   och `BRAINVILLE_KEYWORD_PAGES` (3) sidor per ord. Det ger även äldre uppdrag och uppdrag från
+   andra förmedlare. Ett uppdrag som Brainville returnerar för ett ord räknas som träff på ordet,
+   även om ordet bara står i uppdragstexten som kräver inloggning.
 
 Uppdrag identifieras via länkmönstren `/sv/Requisition?id=<id>` och
 `/sv/PublicProfile/Requisition/<id>?companyId=…` (sedan oktober 2026), söksidans JSON-LD-lista
@@ -154,7 +160,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida
