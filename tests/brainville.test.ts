@@ -69,3 +69,31 @@ test("findNextPageUrl hittar nästa sida men inte ankarlänkar", async () => {
   );
   assert.equal(findNextPageUrl(`<a href="#">Next</a><a href="javascript:void(0)">›</a>`, base), null);
 });
+
+// Länkformatet sedan oktober 2026 (linkPatterns från /api/debug på söksidan, 2026-10-14).
+test("nytt länkformat med språkprefix och id i sökvägen", () => {
+  assert.equal(extractRequisitionId("/sv/PublicProfile/Requisition/343645?companyId=4686"), "343645");
+  assert.equal(extractRequisitionId("https://www.brainville.com/en/PublicProfile/Requisition/343645"), "343645");
+  assert.equal(extractRequisitionId("/sv/PublicProfile/Requisitions?id=648"), null);
+  assert.equal(extractRequisitionId("/sv/RequisitionSearch?Text=Projektledare"), null);
+  const items = parseListing(
+    `<ul>
+      <li><div class="item"><h3><a href="/sv/PublicProfile/Requisition/343645?companyId=4686">Systemutvecklare .NET</a></h3>
+        <p>Stockholm</p></div></li>
+      <li><div class="item"><h3><a href="/sv/PublicProfile/Requisition/343646?companyId=648">Testledare</a></h3></div></li>
+      <li><a href="/sv/RequisitionSearch?Text=Projektledare">Projektledare</a></li>
+    </ul>`,
+    "https://www.brainville.com/sv/RequisitionSearch?lang=sv",
+  );
+  assert.deepEqual(
+    items.map((a) => [a.id, a.title, a.url]),
+    [
+      ["brainville:343645", "Systemutvecklare .NET", "https://www.brainville.com/sv/PublicProfile/Requisition/343645?companyId=4686"],
+      ["brainville:343646", "Testledare", "https://www.brainville.com/sv/PublicProfile/Requisition/343646?companyId=648"],
+    ],
+  );
+});
+
+test("företagssidans nya adress räknas inte som ett uppdrag", () => {
+  assert.equal(extractRequisitionId("/sv/PublicProfile/Requisitions/648"), null);
+});

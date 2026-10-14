@@ -6,28 +6,32 @@ import { cardFields, clean, DATE_RE, extractJsonAssignments, findCards, findNext
 export const BRAINVILLE_BASE = "https://www.brainville.com";
 
 // Kända URL-mönster för enskilda uppdrag på Brainville:
+//   /sv/PublicProfile/Requisition/343645?companyId=4686   (sedan oktober 2026)
 //   /Market/RequisitionSearchResult/Details/330877
 //   /PublicProfile/Requisition?companyId=648&id=330877&returnUrl=...
+const PATH_REQ_RE = /\/PublicProfile\/Requisition\/(\d+)/i;
 const DETAILS_RE = /\/RequisitionSearchResult\/Details\/(\d+)/i;
 const PUBLIC_REQ_RE = /\/PublicProfile\/Requisition\?(?:[^"'#]*&)?id=(\d+)/i;
 
 export function extractRequisitionId(href: string): string | null {
-  const m = href.match(DETAILS_RE) ?? href.match(PUBLIC_REQ_RE);
+  const m = href.match(PATH_REQ_RE) ?? href.match(DETAILS_RE) ?? href.match(PUBLIC_REQ_RE);
   return m ? m[1] : null;
 }
 
+/** Uppdragets publika sida; länken från listan används om den finns (den bär companyId). */
 export function canonicalUrl(id: string, href?: string): string {
   if (href) {
     try {
       const u = new URL(href, BRAINVILLE_BASE);
       if (u.hostname.endsWith("brainville.com")) {
-        if (PUBLIC_REQ_RE.test(u.pathname + u.search)) return u.toString();
+        const path = u.pathname + u.search;
+        if (PATH_REQ_RE.test(path) || PUBLIC_REQ_RE.test(path)) return u.toString();
       }
     } catch {
       /* ignorera */
     }
   }
-  return `${BRAINVILLE_BASE}/Market/RequisitionSearchResult/Details/${id}`;
+  return `${BRAINVILLE_BASE}/sv/PublicProfile/Requisition/${id}`;
 }
 
 /** Tolkar sidtiteln "DevOps | Hire Quality AB - Assignment | Brainville - ..." */

@@ -3,12 +3,13 @@ import { fetchText, mapLimit } from "../http.ts";
 import { BRAINVILLE_BASE, parseDetail, parseListing } from "./brainville-parse.ts";
 import { fetchListing, scrapePaged } from "../paging.ts";
 
-// Publik söksida för uppdrag (paginerad).
-const SEARCH_PAGE = `${BRAINVILLE_BASE}/PublicPage/RequisitionSearch?lang=sv`;
+// Publik söksida för uppdrag (paginerad). Sedan oktober 2026 under /sv/
+// (den gamla adressen /PublicPage/RequisitionSearch skickar vidare hit).
+const SEARCH_PAGE = `${BRAINVILLE_BASE}/sv/RequisitionSearch?lang=sv`;
 const MAX_PAGES = Number(process.env.BRAINVILLE_MAX_PAGES ?? 10);
 
 // Förmedlare/kunder som publicerar många uppdrag på Brainville. Deras publika
-// "Öppna uppdrag"-sidor (/PublicProfile/Requisitions?id=...) används som
+// "Tillgängliga uppdrag"-sidor (/sv/PublicProfile/Requisitions/<id>) används som
 // komplement/fallback. Kan överstyras med env BRAINVILLE_COMPANY_IDS="648,7820".
 const DEFAULT_COMPANY_IDS = [
   648, // Ework Group AB
@@ -31,6 +32,9 @@ function companyIds(): number[] {
     .filter((n) => Number.isFinite(n) && n > 0);
 }
 
+/** Sedan oktober 2026; den gamla adressen (?id=648) visar inte listan. */
+export const companyPage = (id: number) => `${BRAINVILLE_BASE}/sv/PublicProfile/Requisitions/${id}`;
+
 async function scrapeListing(url: string, errors: string[]): Promise<Assignment[]> {
   return (await fetchListing(url, parseListing, errors))?.items ?? [];
 }
@@ -51,7 +55,7 @@ export const brainville: SourceAdapter = {
     const ids = companyIds();
     const [search, companyResults] = await Promise.all([
       scrapePaged(SEARCH_PAGE, parseListing, { hostSuffix: "brainville.com", maxPages: MAX_PAGES, errors }),
-      mapLimit(ids, 4, (id) => scrapeListing(`${BRAINVILLE_BASE}/PublicProfile/Requisitions?id=${id}&lang=sv`, errors)),
+      mapLimit(ids, 4, (id) => scrapeListing(companyPage(id), errors)),
     ]);
     add(search.items, `söksidan (${search.pages} sid${search.via ? `, ${search.via}` : ""})`);
     add(companyResults.flat(), `företagssidor (${ids.length})`);

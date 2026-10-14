@@ -48,16 +48,17 @@ src/components/App.tsx               UI
 Brainvilles API listar bara uppdrag som det egna företaget publicerat, så appen
 läser de publika sidorna:
 
-1. Söksidan `/PublicPage/RequisitionSearch`, med paginering: en "nästa"-länk följs
+1. Söksidan `/sv/RequisitionSearch`, med paginering: en "nästa"-länk följs
    om den finns, annars provas vanliga sidparametrar (`page`, `p` …). Max `BRAINVILLE_MAX_PAGES` (10) sidor.
    Sammanfattningsraden ("Finspång Start immediately about 12 months 1 d") delas upp i
    ort, start, längd, omfattning och publiceringsdatum.
-2. Förmedlares "Öppna uppdrag"-sidor `/PublicProfile/Requisitions?id=<företag>`
+2. Förmedlares "Tillgängliga uppdrag"-sidor `/sv/PublicProfile/Requisitions/<företag>`
    (Ework, KeyMan, Randstad m.fl. – ändra med `BRAINVILLE_COMPANY_IDS=648,7820,...`)
 3. Detaljsidor för varje uppdrag (för beskrivningstext), max `BRAINVILLE_MAX_DETAILS` (60)
 
-Uppdrag identifieras via länkmönstren `/Market/RequisitionSearchResult/Details/<id>`
-och `/PublicProfile/Requisition?...&id=<id>`. Inbäddad JSON i `<script>` tolkas också.
+Uppdrag identifieras via länkmönstret `/sv/PublicProfile/Requisition/<id>?companyId=…`
+(sedan oktober 2026) och de äldre `/Market/RequisitionSearchResult/Details/<id>` och
+`/PublicProfile/Requisition?...&id=<id>`. Inbäddad JSON i `<script>` tolkas också.
 
 ### Cinode
 
