@@ -97,3 +97,34 @@ test("nytt länkformat med språkprefix och id i sökvägen", () => {
 test("företagssidans nya adress räknas inte som ett uppdrag", () => {
   assert.equal(extractRequisitionId("/sv/PublicProfile/Requisitions/648"), null);
 });
+
+// Söksidan för "testledare" (2026-10-14): länkar /sv/Requisition?id=…&text=… och JSON-LD ItemList.
+test("söksidans nya träfflänkar och JSON-LD-lista", () => {
+  assert.equal(extractRequisitionId("/sv/Requisition?id=367981&text=testledare"), "367981");
+  assert.equal(extractRequisitionId("/sv/RequisitionSearch?Text=Projektledare"), null);
+  const itemList = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    numberOfItems: 4,
+    itemListElement: [
+      { "@type": "ListItem", position: 1, url: "https://www.brainville.com/sv/Requisition?id=367981", name: "Testledare" },
+      { "@type": "ListItem", position: 2, url: "https://www.brainville.com/sv/Requisition?id=367966", name: "Testare / Testledare / Testautomatiserare" },
+      { "@type": "ListItem", position: 3, url: "https://www.brainville.com/sv/Requisition?id=367824", name: "Testledare" },
+      { "@type": "ListItem", position: 4, url: "https://www.brainville.com/sv/Requisition?id=367732", name: "Testledare" },
+    ],
+  };
+  const html = `<html><head><script type="application/ld+json">${JSON.stringify(itemList)}</script></head><body>
+    <a href="/sv/RequisitionSearch?Text=Projektledare">Projektledare</a>
+    <div class="req"><a href="/sv/Requisition?id=367981&text=testledare"><h3>Testledare</h3></a><p>Stockholm</p></div>
+  </body></html>`;
+  const items = parseListing(html, "https://www.brainville.com/sv/RequisitionSearch?Text=testledare&lang=sv");
+  assert.deepEqual(
+    items.map((a) => [a.id, a.title, a.url]),
+    [
+      ["brainville:367981", "Testledare", "https://www.brainville.com/sv/Requisition?id=367981"],
+      ["brainville:367966", "Testare / Testledare / Testautomatiserare", "https://www.brainville.com/sv/Requisition?id=367966"],
+      ["brainville:367824", "Testledare", "https://www.brainville.com/sv/Requisition?id=367824"],
+      ["brainville:367732", "Testledare", "https://www.brainville.com/sv/Requisition?id=367732"],
+    ],
+  );
+});

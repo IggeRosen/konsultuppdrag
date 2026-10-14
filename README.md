@@ -56,8 +56,9 @@ läser de publika sidorna:
    (Ework, KeyMan, Randstad m.fl. – ändra med `BRAINVILLE_COMPANY_IDS=648,7820,...`)
 3. Detaljsidor för varje uppdrag (för beskrivningstext), max `BRAINVILLE_MAX_DETAILS` (60)
 
-Uppdrag identifieras via länkmönstret `/sv/PublicProfile/Requisition/<id>?companyId=…`
-(sedan oktober 2026) och de äldre `/Market/RequisitionSearchResult/Details/<id>` och
+Uppdrag identifieras via länkmönstren `/sv/Requisition?id=<id>` och
+`/sv/PublicProfile/Requisition/<id>?companyId=…` (sedan oktober 2026), söksidans JSON-LD-lista
+(`ItemList`) och de äldre `/Market/RequisitionSearchResult/Details/<id>` och
 `/PublicProfile/Requisition?...&id=<id>`. Inbäddad JSON i `<script>` tolkas också.
 
 ### Cinode
