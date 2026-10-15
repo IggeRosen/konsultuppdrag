@@ -3,6 +3,32 @@ import type { Assignment } from "./types.ts";
 
 export const DATE_RE = /\b(20\d{2}-\d{2}-\d{2})\b/g;
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", shy: "",
+  aring: "å", auml: "ä", ouml: "ö", Aring: "Å", Auml: "Ä", Ouml: "Ö",
+  aelig: "æ", oslash: "ø", AElig: "Æ", Oslash: "Ø", uuml: "ü", Uuml: "Ü", szlig: "ß",
+  eacute: "é", egrave: "è", ecirc: "ê", Eacute: "É", aacute: "á", agrave: "à", acirc: "â",
+  iacute: "í", oacute: "ó", ocirc: "ô", uacute: "ú", ccedil: "ç", ntilde: "ñ", euml: "ë", iuml: "ï",
+  ndash: "–", mdash: "—", hellip: "…", bull: "•", middot: "·", lsquo: "‘", rsquo: "’",
+  ldquo: "“", rdquo: "”", laquo: "«", raquo: "»", euro: "€", copy: "©", reg: "®", trade: "™",
+  deg: "°", times: "×", frac12: "½", sect: "§", para: "¶",
+};
+
+/**
+ * Avkodar HTML-entiteter i text från JSON-API:er ("F&ouml;r" → "För", "&#228;" → "ä").
+ * Okända namngivna entiteter lämnas orörda.
+ */
+export function decodeEntities(text: string): string {
+  if (!text.includes("&")) return text;
+  return text.replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z][a-z0-9]{1,8});/gi, (m, e: string) => {
+    if (e[0] === "#") {
+      const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m;
+    }
+    return NAMED_ENTITIES[e] ?? m;
+  });
+}
+
 export function clean(text: string | undefined | null): string {
   return (text ?? "").replace(/\s+/g, " ").trim();
 }

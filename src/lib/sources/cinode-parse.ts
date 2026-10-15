@@ -78,6 +78,24 @@ const PLACES_SV: Record<string, string> = {
   scania: "Skåne",
   copenhagen: "Köpenhamn",
   "the whole of sweden": "Hela Sverige",
+  // Orter utan å/ä/ö (t.ex. Magnit: "Linkoping, SWE").
+  goteborg: "Göteborg",
+  malmo: "Malmö",
+  linkoping: "Linköping",
+  norrkoping: "Norrköping",
+  jonkoping: "Jönköping",
+  vasteras: "Västerås",
+  orebro: "Örebro",
+  umea: "Umeå",
+  lulea: "Luleå",
+  gavle: "Gävle",
+  vaxjo: "Växjö",
+  boras: "Borås",
+  sodertalje: "Södertälje",
+  skovde: "Skövde",
+  ostersund: "Östersund",
+  trollhattan: "Trollhättan",
+  sodertorn: "Södertörn",
 };
 export function swedishPlace(place: string): string {
   return PLACES_SV[place.toLowerCase()] ?? place;
