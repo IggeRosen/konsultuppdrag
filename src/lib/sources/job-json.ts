@@ -1,5 +1,5 @@
 import type { Assignment } from "../types.ts";
-import { clean, stripEmpty } from "../parse-utils.ts";
+import { clean, decodeEntities, stripEmpty } from "../parse-utils.ts";
 import { swedishPlace } from "./cinode-parse.ts";
 
 // Generell tolkning av uppdragsobjekt från JSON-API:er (Verama, Magnit m.fl.).
@@ -8,7 +8,8 @@ export type Obj = Record<string, unknown>;
 
 export function str(v: unknown): string | undefined {
   // "-" och liknande betyder "anges inte".
-  if (typeof v === "string" && v.trim() && !/^[\s\-–—.]*$/.test(v)) return clean(v.replace(/<[^>]+>/g, " "));
+  // Taggar bort först, sedan entiteter (Magnit skickar t.ex. "F&ouml;r att kunna svara p&aring;").
+  if (typeof v === "string" && v.trim() && !/^[\s\-–—.]*$/.test(v)) return clean(decodeEntities(v.replace(/<[^>]+>/g, " "))) || undefined;
   if (typeof v === "number") return String(v);
   return undefined;
 }
