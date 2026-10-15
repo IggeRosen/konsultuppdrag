@@ -21,6 +21,38 @@ const DEFAULT_COMPANY_IDS = [
   16215, // Shaya Solutions AB
 ];
 
+// Nyckelordssökning: Brainvilles egen sökning (/sv/RequisitionSearch?Text=…, öppen
+// utan inloggning) körs för varje nyckelord när någon söker i appen.
+const MAX_KEYWORDS = Number(process.env.BRAINVILLE_MAX_KEYWORDS ?? 8);
+const KEYWORD_PAGES = Number(process.env.BRAINVILLE_KEYWORD_PAGES ?? 3);
+
+export const keywordSearchUrl = (keyword: string) =>
+  `${BRAINVILLE_BASE}/sv/RequisitionSearch?Text=${encodeURIComponent(keyword)}&lang=sv`;
+
+/**
+ * Söker på Brainville efter varje nyckelord. Ger uppdragen och, per uppdrag,
+ * vilka nyckelord Brainville returnerade det för.
+ */
+export async function searchBrainville(
+  keywords: string[],
+): Promise<{ items: Assignment[]; hits: Map<string, Set<string>>; errors: string[]; searched: number }> {
+  const errors: string[] = [];
+  const words = [...new Set(keywords.map((k) => k.trim()).filter(Boolean))].slice(0, MAX_KEYWORDS);
+  const byId = new Map<string, Assignment>();
+  const hits = new Map<string, Set<string>>();
+  const results = await mapLimit(words, 4, (kw) =>
+    scrapePaged(keywordSearchUrl(kw), parseListing, { hostSuffix: "brainville.com", maxPages: KEYWORD_PAGES, errors }),
+  );
+  results.forEach((r, i) => {
+    for (const a of r.items) {
+      byId.set(a.id, { ...a, ...byId.get(a.id) });
+      if (!hits.has(a.id)) hits.set(a.id, new Set());
+      hits.get(a.id)!.add(words[i]);
+    }
+  });
+  return { items: [...byId.values()], hits, errors, searched: words.length };
+}
+
 const MAX_DETAIL_FETCHES = Number(process.env.BRAINVILLE_MAX_DETAILS ?? 60);
 
 function companyIds(): number[] {
