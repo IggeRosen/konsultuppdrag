@@ -26,8 +26,9 @@ export function mapNexerJob(o: Obj): Assignment | null {
   const cities = [...new Set(strings(o.cities))];
   const countries = [...new Set(strings(o.countries))];
   const role = str(o.role);
-  const body = descriptionOf(o.body);
-  const url = str(o.apply_url);
+  const body = descriptionOf(o.body)?.slice(0, 2300);
+  // apply_url pekar på ansökningsformuläret (…/jobs/<id>-<slug>/applications/new); länka till annonsen.
+  const url = str(o.apply_url)?.replace(/\/applications\/new\/?(?=[?#]|$)/, "");
   return stripEmpty({
     id: `nexer:${id}`,
     source: "Nexer",

@@ -186,7 +186,7 @@ ingressen, så annonstexten läses från sidans `section.single-job__body`. Anno
 [Nexers jobbsida](https://nexergroup.com/sv/karriar/lediga-jobb/) hämtar alla jobb (Teamtailor) från ett öppet
 gränssnitt på Nexers egen sajt: `https://nexergroup.com/wp-json/nexer-blocks/v1/teamtailor_jobs` (ett anrop,
 ingen nyckel, sparas 30 minuter). Varje jobb ger titel, bolag, städer, länder, roll, publicerad
-(`start_date`), sista dag (`end_date`) och annonstext; länken går till ansökan (`apply_url`). Rekryterarens
+(`start_date`), sista dag (`end_date`, ofta tom) och annonstext; länken går till annonsen på Teamtailor. Rekryterarens
 e-post läses inte in. Listan gäller alla länder; som standard visas bara jobb i Sverige
 (`NEXER_ALL_COUNTRIES=1` visar alla). robots.txt spärrar bara listans filterparametrar (`?city=` m.fl.),
 som inte används. De flesta jobb är anställningar som konsult hos Nexer.
