@@ -6,12 +6,13 @@ import { keyman } from "./keyman.ts";
 import { magnit } from "./magnit.ts";
 import { emagine } from "./emagine.ts";
 import { itjobb } from "./itjobb.ts";
+import { kvadrat } from "./kvadrat.ts";
 
 /**
  * Registrerade uppdragsportaler. Lägg till en ny källa genom att skapa en
  * adapter (se brainville.ts) och lägga till den här.
  */
-export const SOURCES: SourceAdapter[] = [brainville, cinode, ework, keyman, magnit, emagine, itjobb];
+export const SOURCES: SourceAdapter[] = [brainville, cinode, ework, keyman, magnit, emagine, itjobb, kvadrat];
 
 /** Portaler som planeras men ännu inte är implementerade – visas i UI:t. */
 export const PLANNED_SOURCES: string[] = [];

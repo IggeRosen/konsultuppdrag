@@ -5,7 +5,7 @@ import { extractRequisitionId, parseDetail as parseBrainvilleDetail, parseListin
 import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/sources/cinode-parse";
 import { extractNextCursor } from "@/lib/sources/cinode-parse";
 import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
-import { findNextPage } from "@/lib/parse-utils";
+import { extractJobPosting, findNextPage } from "@/lib/parse-utils";
 import { extractVeramaId, parseVeramaDetail, parseVeramaHtml, parseVeramaJson } from "@/lib/sources/ework-parse";
 import { probeEworkApi } from "@/lib/sources/ework";
 import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
@@ -15,6 +15,7 @@ import { extractEmagineId, parseEmagineDetail, parseEmagineJson, parseEmagineLis
 import { probeEmagineApi } from "@/lib/sources/emagine";
 import { parsePlatsbankenJson } from "@/lib/sources/platsbanken";
 import { extractItjobbSlug, parseItjobbJob } from "@/lib/sources/itjobb";
+import { extractKvadratSlug, parseKvadratHtml } from "@/lib/sources/kvadrat";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -29,6 +30,9 @@ const SITES = [
   { host: "jobtechdev.se", parse: () => [], extractId: () => null, json: parsePlatsbankenJson },
   // ITJobb: annonssidornas JSON-LD JobPosting visas under "detail".
   { host: "itjobb.se", parse: () => [], extractId: extractItjobbSlug },
+  // Kvadrat: startsidan på uppdrag.kvadrat.se tolkas (__NUXT_DATA__); en uppdragssidas
+  // eventuella JSON-LD JobPosting visas under "detail".
+  { host: "kvadrat.se", parse: parseKvadratHtml, extractId: extractKvadratSlug },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -291,7 +295,9 @@ export async function GET(req: Request) {
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: site.host === "itjobb.se"
+      detail: site.host === "kvadrat.se"
+        ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
+        : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
         : isEmagine
         ? extractEmagineId(res.url)

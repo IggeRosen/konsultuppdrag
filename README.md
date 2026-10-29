@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb**, **Kvadrat** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
 
 ## Funktioner
 
@@ -28,6 +28,7 @@ src/lib/sources/magnit-parse.ts      tolkning av Magnit Source
 src/lib/sources/emagine.ts           emagine (portalens sök- och detalj-API, Sverigefilter; listsidor/sitemap som reserv)
 src/lib/sources/emagine-parse.ts     tolkning av emagines API-svar, portal och landssajter
 src/lib/sources/itjobb.ts            ITJobb (sitemap + JSON-LD JobPosting på annonssidorna)
+src/lib/sources/kvadrat.ts           Kvadrat (uppdrag.kvadrat.se, Nuxt-data på startsidan)
 src/lib/sources/platsbanken.ts       Platsbanken via Arbetsförmedlingens JobSearch-API (bara vid nyckelordssökning)
 src/lib/sources/emagine-search.ts    sökförfrågan: portalens format + inlärning ur valideringsfel
 src/lib/sweden.ts                    Sverigefilter för källor med uppdrag i flera länder
@@ -157,6 +158,16 @@ filtreras bort. De flesta är anställningar; källan kan döljas med källknapp
 
 JobbSafari används inte: sajten skyddas av Cloudflares robotkontroll.
 
+### Kvadrat
+
+[uppdrag.kvadrat.se](https://uppdrag.kvadrat.se/) listar Kvadrats öppna uppdrag (i första hand för
+kvadratare, i andra hand för underkonsulter); robots.txt tillåter allt (oktober 2026). Startsidan är
+Nuxt och bäddar in alla uppdrag i `<script id="__NUXT_DATA__">` (devalue-format, packas upp av
+`unflattenNuxt`). Ett enda anrop ger titel, ort, start/slut, längd i månader, omfattning (t.ex. "100 %"),
+sammanfattning och kompetenskrav (läggs i beskrivningen som "Kompetenser: …"). "Publicerad" är senast
+ändrad (`updatedAt`). Avslutade uppdrag filtreras bort. Skulle sajten börja dela upp listan läses
+`?page=N` (max `KVADRAT_MAX_PAGES` = 5). `/api/debug?url=https://uppdrag.kvadrat.se/` visar tolkningen.
+
 ### Platsbanken (Arbetsförmedlingen)
 
 Platsbanken hämtas via Arbetsförmedlingens öppna JobSearch-API (JobTech Dev):
@@ -191,7 +202,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida
