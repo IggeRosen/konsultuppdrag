@@ -254,7 +254,7 @@ export default function App() {
                 setHiddenSources((prev) => (prev.includes(s.source) ? prev.filter((x) => x !== s.source) : [...prev, s.source]))
               }
             >
-              {s.source} · {s.ok ? `${s.count} uppdrag` : "ej tillgänglig"}
+              {s.source} · {s.idle ? "söks med nyckelord" : s.ok ? `${s.count} uppdrag` : "ej tillgänglig"}
             </button>
           ))}
           {data.plannedSources.map((s) => (
