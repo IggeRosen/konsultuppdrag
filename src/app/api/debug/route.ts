@@ -5,7 +5,7 @@ import { extractRequisitionId, parseDetail as parseBrainvilleDetail, parseListin
 import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/sources/cinode-parse";
 import { extractNextCursor } from "@/lib/sources/cinode-parse";
 import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
-import { extractJobPosting, findNextPage } from "@/lib/parse-utils";
+import { findNextPage } from "@/lib/parse-utils";
 import { extractVeramaId, parseVeramaDetail, parseVeramaHtml, parseVeramaJson } from "@/lib/sources/ework-parse";
 import { probeEworkApi } from "@/lib/sources/ework";
 import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
@@ -29,9 +29,6 @@ const SITES = [
   { host: "jobtechdev.se", parse: () => [], extractId: () => null, json: parsePlatsbankenJson },
   // ITJobb: annonssidornas JSON-LD JobPosting visas under "detail".
   { host: "itjobb.se", parse: () => [], extractId: extractItjobbSlug },
-  // Konsultguiden: bara för att undersöka sajten (ingen tolkning än). Annonssidornas
-  // JSON-LD JobPosting visas under "detail".
-  { host: "konsultguiden.se", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -294,9 +291,7 @@ export async function GET(req: Request) {
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: site.host === "konsultguiden.se"
-        ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
-        : site.host === "itjobb.se"
+      detail: site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
         : isEmagine
         ? extractEmagineId(res.url)
