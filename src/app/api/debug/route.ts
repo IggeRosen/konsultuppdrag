@@ -19,6 +19,7 @@ import { extractKvadratSlug, parseKvadratHtml } from "@/lib/sources/kvadrat";
 import { extractAdaSlug, parseAdaJob } from "@/lib/sources/adadigital";
 import { parseNexerJson } from "@/lib/sources/nexer";
 import { extractWiseId, parseWiseJob, parseWiseListing } from "@/lib/sources/wise";
+import { experisJobPosting, extractExperisId, parseExperisJob } from "@/lib/sources/experis";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -43,8 +44,8 @@ const SITES = [
   // Wise: listan /lediga-jobb/?jobTags=konsult&pg=N tolkas; en annonssidas tolkning visas
   // under "detail". &text=1 visar en sidas text.
   { host: "wise.se", parse: parseWiseListing, extractId: extractWiseId },
-  // Experis och Academic Work: bara för att undersöka sajterna (ingen tolkning än).
-  { host: "experis.se", parse: () => [], extractId: () => null },
+  // Experis: annonssidans tolkning och rå JSON-LD JobPosting visas under "detail". Academic Work: bara undersökning.
+  { host: "experis.se", parse: () => [], extractId: extractExperisId },
   { host: "academicwork.se", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
@@ -345,7 +346,11 @@ export async function GET(req: Request) {
         ? extractWiseId(res.url)
           ? (parseWiseJob(res.body) ?? undefined)
           : undefined
-        : ["kvadrat.se", "experis.se", "academicwork.se"].includes(site.host)
+        : site.host === "experis.se"
+        ? extractExperisId(res.url)
+          ? { parsed: parseExperisJob(res.body, res.url) ?? undefined, raw: experisJobPosting(res.body) ?? undefined }
+          : undefined
+        : ["kvadrat.se", "academicwork.se"].includes(site.host)
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
