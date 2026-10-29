@@ -5,7 +5,7 @@ import { extractRequisitionId, parseDetail as parseBrainvilleDetail, parseListin
 import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/sources/cinode-parse";
 import { extractNextCursor } from "@/lib/sources/cinode-parse";
 import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
-import { extractJobPosting, findNextPage } from "@/lib/parse-utils";
+import { findNextPage } from "@/lib/parse-utils";
 import { extractVeramaId, parseVeramaDetail, parseVeramaHtml, parseVeramaJson } from "@/lib/sources/ework-parse";
 import { probeEworkApi } from "@/lib/sources/ework";
 import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
@@ -14,6 +14,7 @@ import { probeMagnitApi } from "@/lib/sources/magnit";
 import { extractEmagineId, parseEmagineDetail, parseEmagineJson, parseEmagineListing } from "@/lib/sources/emagine-parse";
 import { probeEmagineApi } from "@/lib/sources/emagine";
 import { parsePlatsbankenJson } from "@/lib/sources/platsbanken";
+import { extractItjobbSlug, parseItjobbJob } from "@/lib/sources/itjobb";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -26,9 +27,8 @@ const SITES = [
   { host: "magnitglobal.com", parse: parseMagnitHtml, extractId: extractMagnitId },
   { host: "emagine.org", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   { host: "jobtechdev.se", parse: () => [], extractId: () => null, json: parsePlatsbankenJson },
-  // ITJobb: bara för att undersöka sajten (ingen tolkning än). Annonssidornas
-  // JSON-LD JobPosting visas under "detail".
-  { host: "itjobb.se", parse: () => [], extractId: () => null },
+  // ITJobb: annonssidornas JSON-LD JobPosting visas under "detail".
+  { host: "itjobb.se", parse: () => [], extractId: extractItjobbSlug },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -292,7 +292,7 @@ export async function GET(req: Request) {
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
       detail: site.host === "itjobb.se"
-        ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
+        ? (parseItjobbJob(res.body, res.url) ?? undefined)
         : isEmagine
         ? extractEmagineId(res.url)
           ? parseEmagineDetail(res.body)
