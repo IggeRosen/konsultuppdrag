@@ -5,7 +5,7 @@ import { extractRequisitionId, parseDetail as parseBrainvilleDetail, parseListin
 import { extractCinodeId, parseCinodeDetail, parseCinodeListing } from "@/lib/sources/cinode-parse";
 import { extractNextCursor } from "@/lib/sources/cinode-parse";
 import { probeLoadMore } from "@/lib/sources/cinode-loadmore";
-import { extractJobPosting, findNextPage } from "@/lib/parse-utils";
+import { findNextPage } from "@/lib/parse-utils";
 import { extractVeramaId, parseVeramaDetail, parseVeramaHtml, parseVeramaJson } from "@/lib/sources/ework-parse";
 import { probeEworkApi } from "@/lib/sources/ework";
 import { extractKeymanId, parseKeymanDetail, parseKeymanListing } from "@/lib/sources/keyman-parse";
@@ -26,9 +26,6 @@ const SITES = [
   { host: "magnitglobal.com", parse: parseMagnitHtml, extractId: extractMagnitId },
   { host: "emagine.org", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   { host: "jobtechdev.se", parse: () => [], extractId: () => null, json: parsePlatsbankenJson },
-  // JobbSafari: bara för att undersöka sajten (ingen tolkning än). Annonssidornas
-  // JSON-LD JobPosting visas under "detail".
-  { host: "jobbsafari.se", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -42,7 +39,6 @@ export const dynamic = "force-dynamic";
  *             /api/debug?url=https://cinode.market/requests
  *             /api/debug?url=https://app.verama.com/sv/job-requests&probe=1
  *             /api/debug?url=https://www.keyman.se/sv/uppdrag/
- *             /api/debug?url=https://www.jobbsafari.se/robots.txt
  * Visar vad scrapern ser på en sida. Endast de sajter som finns i SITES tillåts.
  * Lägg till &full=1 för att få med hela HTML:en.
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
@@ -68,11 +64,6 @@ export async function GET(req: Request) {
   }
   try {
     const res = await fetchText(u.toString(), { revalidate: 0, headers: { Accept: "application/json, text/html;q=0.9, */*;q=0.8" } });
-
-    // Ren text (t.ex. robots.txt): visa innehållet.
-    if (/^text\/plain/i.test(res.headers["content-type"] ?? "") || /\/robots\.txt$/i.test(u.pathname)) {
-      return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: res.body.length, text: res.body.slice(0, 8000) });
-    }
 
     // JSON-svar (t.ex. ett API): visa hur det tolkas.
     if (/json/i.test(res.headers["content-type"] ?? "") || /^\s*[[{]/.test(res.body)) {
@@ -291,9 +282,7 @@ export async function GET(req: Request) {
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: site.host === "jobbsafari.se"
-        ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
-        : isEmagine
+      detail: isEmagine
         ? extractEmagineId(res.url)
           ? parseEmagineDetail(res.body)
           : undefined
