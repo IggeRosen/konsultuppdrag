@@ -49,7 +49,7 @@ const EMPLOYMENT_SV: Record<string, string> = {
   OTHER: "Annan anställningsform",
 };
 
-function employmentOf(v: unknown): string | undefined {
+export function employmentOf(v: unknown): string | undefined {
   const list = (Array.isArray(v) ? v : [v]).map((x) => str(x)).filter((x): x is string => !!x);
   const sv = [...new Set(list.map((x) => EMPLOYMENT_SV[x.toUpperCase()] ?? x))];
   return sv.length ? sv.join(", ") : undefined;
