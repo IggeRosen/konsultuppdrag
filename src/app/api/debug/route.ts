@@ -13,6 +13,7 @@ import { extractMagnitId, MAGNIT_GATEWAY, parseMagnitDetail, parseMagnitHtml, pa
 import { probeMagnitApi } from "@/lib/sources/magnit";
 import { extractEmagineId, parseEmagineDetail, parseEmagineJson, parseEmagineListing } from "@/lib/sources/emagine-parse";
 import { probeEmagineApi } from "@/lib/sources/emagine";
+import { parsePlatsbankenJson } from "@/lib/sources/platsbanken";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -24,6 +25,7 @@ const SITES = [
   { host: "keyman.se", parse: parseKeymanListing, extractId: extractKeymanId },
   { host: "magnitglobal.com", parse: parseMagnitHtml, extractId: extractMagnitId },
   { host: "emagine.org", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
+  { host: "jobtechdev.se", parse: () => [], extractId: () => null, json: parsePlatsbankenJson },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },

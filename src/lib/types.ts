@@ -33,6 +33,8 @@ export interface SourceStatus {
   strategies: string[];
   error?: string;
   fetchedAt: string;
+  /** Källan används bara vid nyckelordssökning och ingen har sökt (t.ex. Platsbanken). */
+  idle?: boolean;
 }
 
 export interface SourceAdapter {
