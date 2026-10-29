@@ -36,6 +36,9 @@ const SITES = [
   { host: "kvadrat.se", parse: parseKvadratHtml, extractId: extractKvadratSlug },
   // ADA Digital: annonssidornas tolkning (JSON-LD JobPosting + annonstext) visas under "detail".
   { host: "adadigital.se", parse: () => [], extractId: extractAdaSlug },
+  // Offentliga Jobb: bara för att undersöka sajten (ingen tolkning än). Annonssidornas
+  // JSON-LD JobPosting visas under "detail".
+  { host: "offentligajobb.se", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -300,7 +303,7 @@ export async function GET(req: Request) {
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
       detail: site.host === "adadigital.se"
         ? (parseAdaJob(res.body, res.url) ?? extractJobPosting(cheerio.load(res.body)) ?? undefined)
-        : site.host === "kvadrat.se"
+        : site.host === "kvadrat.se" || site.host === "offentligajobb.se"
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
