@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
 
 ## Funktioner
 
@@ -27,6 +27,7 @@ src/lib/sources/magnit.ts            Magnit Source (POST-sökning + detaljer via
 src/lib/sources/magnit-parse.ts      tolkning av Magnit Source
 src/lib/sources/emagine.ts           emagine (portalens sök- och detalj-API, Sverigefilter; listsidor/sitemap som reserv)
 src/lib/sources/emagine-parse.ts     tolkning av emagines API-svar, portal och landssajter
+src/lib/sources/itjobb.ts            ITJobb (sitemap + JSON-LD JobPosting på annonssidorna)
 src/lib/sources/platsbanken.ts       Platsbanken via Arbetsförmedlingens JobSearch-API (bara vid nyckelordssökning)
 src/lib/sources/emagine-search.ts    sökförfrågan: portalens format + inlärning ur valideringsfel
 src/lib/sweden.ts                    Sverigefilter för källor med uppdrag i flera länder
@@ -144,6 +145,18 @@ en Angular-app som hämtar dem från `portal-api.emagine.org` (`EMAGINE_API_URL`
 3. Beskrivning via `GET /api/JobAds/details/{id}/En` (reserv: uppdragssidan), max `EMAGINE_MAX_DETAILS` = 80.
 4. Svarar inte API:t läses listsidorna och sitemaparna i stället (max `EMAGINE_MAX_SITEMAP` = 60).
 
+### ITJobb
+
+[ITJobb.se](https://itjobb.se/sv/jobb) är en svensk jobbsajt för IT; robots.txt tillåter allt (oktober 2026).
+Appen läser annonssitemapen `https://itjobb.se/sv/jobb/sitemap.xml`, tar de `ITJOBB_MAX_DETAILS` (80)
+senast ändrade annonserna och hämtar varje annonssida (`/sv/jobb/<slug>`, sparas 6 timmar). Fälten kommer
+ur sidans JSON-LD `JobPosting`: titel, arbetsgivare, ort, publicerad, sista ansökningsdag, anställningsform
+(`FULL_TIME` → "Heltid", `CONTRACTOR` → "Konsultuppdrag" …), distans och annonstext. Utgångna annonser
+filtreras bort. De flesta är anställningar; källan kan döljas med källknappen.
+`/api/debug?url=https://itjobb.se/sv/jobb/<slug>` visar tolkningen under `detail`.
+
+JobbSafari används inte: sajten skyddas av Cloudflares robotkontroll.
+
 ### Platsbanken (Arbetsförmedlingen)
 
 Platsbanken hämtas via Arbetsförmedlingens öppna JobSearch-API (JobTech Dev):
@@ -178,7 +191,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida
