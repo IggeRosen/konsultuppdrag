@@ -1,6 +1,7 @@
 // Sitemap och JSON-LD är riktiga (adadigital.se via /api/debug, 2026-10-29), förkortade.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { extractAdaSlug, parseAdaJob, parseAdaSitemap } from "../src/lib/sources/adadigital.ts";
 
 const SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
@@ -71,4 +72,26 @@ test("extractAdaSlug", () => {
   assert.equal(extractAdaSlug(URL_), "data-och-analytics/konsult-interim-data-engineer-bi-i-stockholm");
   assert.equal(extractAdaSlug("https://www.adadigital.se/lediga-jobb/yrke/data-och-analytics/"), null);
   assert.equal(extractAdaSlug("https://www.adadigital.se/kontakta/"), null);
+});
+
+test("parseAdaJob på riktig annonssida: hela texten från single-job__body", () => {
+  const html = readFileSync(new URL("./fixtures/adadigital-job.html", import.meta.url), "utf8");
+  const a = parseAdaJob(html, URL_);
+  assert.ok(a);
+  assert.equal(a.extent, "Konsultuppdrag/interim");
+  const d = a.description ?? "";
+  assert.match(d, /^Är du konsult \/ interim/);
+  assert.match(d, /Uppdraget är på heltid/);
+  assert.match(d, /\nDet här gör du hos oss\n/);
+  assert.match(d, /\nDatabricks\n/);
+  assert.match(d, /Område: Data och Analytics\./);
+  assert.doesNotMatch(d, /Sök jobbet|Publicerat|Lediga IT-jobb|Telefon|Lär känna Ada/);
+});
+
+test("rekrytering utan konsulttext märks med anställningsform", () => {
+  const html = readFileSync(new URL("./fixtures/adadigital-job.html", import.meta.url), "utf8")
+    .replace(/Detta är ett konsultuppdrag/, "Detta är en rekrytering")
+    .replace(/"title": "[^"]*"/, '"title": "Senior IT-generalist till konsultbolag i Stockholm"');
+  const a = parseAdaJob(html, "https://www.adadigital.se/lediga-jobb/tech/senior-it-generalist-till-konsultbolag-i-stockholm/");
+  assert.equal(a?.extent, "Heltid");
 });

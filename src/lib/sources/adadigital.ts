@@ -42,27 +42,30 @@ export function parseAdaSitemap(xml: string): AdaEntry[] {
     .sort((a, b) => (b.lastmod ?? "").localeCompare(a.lastmod ?? ""));
 }
 
-/** Annonstexten på sidan (JSON-LD har bara ingressen). Ger undefined om inget längre hittas. */
+/**
+ * Annonstexten på sidan (JSON-LD har bara ingressen). Texten står i ett eller flera
+ * <section class="single-job__body"> (2026-10-29); utan dem prövas article/main.
+ */
 function bodyText($: cheerio.CheerioAPI, minLength: number): string | undefined {
-  $("script, style, noscript, header, nav, footer, form, iframe, .menu, [class*='cookie']").remove();
-  const selectors = [".job-content", ".job-description", ".single-job", ".jobpost", ".entry-content", "article", "main"];
-  for (const sel of selectors) {
-    const el = $(sel).first();
-    if (!el.length) continue;
-    el.find("br").replaceWith("\n");
-    el.find("p, li, h1, h2, h3, h4, h5, h6, div").each((_, n) => {
-      $(n).append("\n");
-    });
-    const text = el
-      .text()
-      .split("\n")
-      .map((l) => l.replace(/\s+/g, " ").trim())
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-    if (text.length > minLength + 150) return text.slice(0, 2500);
-  }
-  return undefined;
+  $("script, style, noscript, header, nav, footer, form, iframe").remove();
+  let blocks = $(".single-job__body");
+  if (!blocks.length) blocks = $("article, main").first();
+  if (!blocks.length) return undefined;
+  blocks.find(".single-job__cta, .single-job__pubdate, h1").remove();
+  blocks.find("br").replaceWith("\n");
+  blocks.find("p, li, h2, h3, h4, h5, h6, div").each((_, n) => {
+    $(n).append("\n");
+  });
+  const text = blocks
+    .toArray()
+    .map((b) => $(b).text())
+    .join("\n")
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  return text.length > minLength + 50 ? text.slice(0, 2500) : undefined;
 }
 
 /** Tolkar en annonssida via dess JSON-LD JobPosting (plus annonstexten om den hittas). */
@@ -89,8 +92,9 @@ export function parseAdaJob(html: string, url: string): Assignment | null {
   const addr = loc?.address && typeof loc.address === "object" ? (loc.address as Obj) : {};
   const country = str(addr.addressCountry);
   const ingress = str(j.description);
+  // Fast text längst ned på sidan för konsultuppdrag (anställning hos ADA eller underkonsult).
+  const consulting = /detta är ett konsultuppdrag/i.test($("body").text()) || /\b(konsult|interim)\b/i.test(title);
   const body = bodyText($, ingress?.length ?? 0);
-  const consulting = /\b(konsult|interim|uppdrag)/i.test(title);
   const meta = [
     str(j.industry) && `Område: ${str(j.industry)}.`,
     str(j.jobBenefits) && `Förmåner: ${str(j.jobBenefits)}.`,

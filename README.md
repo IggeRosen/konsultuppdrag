@@ -175,8 +175,9 @@ sammanfattning och kompetenskrav (läggs i beskrivningen som "Kompetenser: …")
 robots.txt tillåter allt (oktober 2026). Annonserna listas i `https://www.adadigital.se/tng_job-sitemap.xml`
 och varje annonssida (`/lediga-jobb/<kategori>/<slug>/`, sparas 6 timmar, max `ADADIGITAL_MAX_DETAILS` = 60)
 har JSON-LD `JobPosting`: titel, ort, publicerad, sista ansökningsdag, område och förmåner. JSON-LD har bara
-ingressen, så annonstexten läses från sidan när den går att hitta. Titlar med "konsult", "interim" eller
-"uppdrag" märks som "Konsultuppdrag/interim"; övriga är rekryteringar. Utgångna annonser filtreras bort.
+ingressen, så annonstexten läses från sidans `section.single-job__body`. Annonser med sidans fasta text
+"Detta är ett konsultuppdrag …" (eller "konsult"/"interim" i titeln) märks som "Konsultuppdrag/interim";
+övriga är rekryteringar. Utgångna annonser filtreras bort.
 `/api/debug?url=<annonsadress>` visar tolkningen under `detail`.
 
 ### Platsbanken (Arbetsförmedlingen)
