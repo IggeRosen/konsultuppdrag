@@ -56,7 +56,7 @@ export function employmentOf(v: unknown): string | undefined {
 }
 
 /** Rensar annonstexten men behåller styckebrytningar. */
-function descriptionOf(v: unknown): string | undefined {
+export function descriptionOf(v: unknown): string | undefined {
   if (typeof v !== "string") return undefined;
   const text = cheerio
     .load(v.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|li|h[1-6])>/gi, "\n"))

@@ -17,6 +17,7 @@ import { parsePlatsbankenJson } from "@/lib/sources/platsbanken";
 import { extractItjobbSlug, parseItjobbJob } from "@/lib/sources/itjobb";
 import { extractKvadratSlug, parseKvadratHtml } from "@/lib/sources/kvadrat";
 import { extractAdaSlug, parseAdaJob } from "@/lib/sources/adadigital";
+import { parseNexerJson } from "@/lib/sources/nexer";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -36,6 +37,8 @@ const SITES = [
   { host: "kvadrat.se", parse: parseKvadratHtml, extractId: extractKvadratSlug },
   // ADA Digital: annonssidornas tolkning (JSON-LD JobPosting + annonstext) visas under "detail".
   { host: "adadigital.se", parse: () => [], extractId: extractAdaSlug },
+  // Nexer Group: jobblistan /wp-json/nexer-blocks/v1/teamtailor_jobs tolkas som JSON.
+  { host: "nexergroup.com", parse: () => [], extractId: () => null, json: parseNexerJson },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
