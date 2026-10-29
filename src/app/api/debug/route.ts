@@ -15,6 +15,7 @@ import { extractEmagineId, parseEmagineDetail, parseEmagineJson, parseEmagineLis
 import { probeEmagineApi } from "@/lib/sources/emagine";
 import { parsePlatsbankenJson } from "@/lib/sources/platsbanken";
 import { extractItjobbSlug, parseItjobbJob } from "@/lib/sources/itjobb";
+import { extractKvadratSlug, parseKvadratHtml } from "@/lib/sources/kvadrat";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -29,9 +30,9 @@ const SITES = [
   { host: "jobtechdev.se", parse: () => [], extractId: () => null, json: parsePlatsbankenJson },
   // ITJobb: annonssidornas JSON-LD JobPosting visas under "detail".
   { host: "itjobb.se", parse: () => [], extractId: extractItjobbSlug },
-  // Kvadrat: bara för att undersöka sajten (ingen tolkning än). Uppdragssidornas
-  // JSON-LD JobPosting visas under "detail".
-  { host: "kvadrat.se", parse: () => [], extractId: () => null },
+  // Kvadrat: startsidan på uppdrag.kvadrat.se tolkas (__NUXT_DATA__); en uppdragssidas
+  // eventuella JSON-LD JobPosting visas under "detail".
+  { host: "kvadrat.se", parse: parseKvadratHtml, extractId: extractKvadratSlug },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
