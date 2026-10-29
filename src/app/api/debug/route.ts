@@ -18,7 +18,7 @@ import { extractItjobbSlug, parseItjobbJob } from "@/lib/sources/itjobb";
 import { extractKvadratSlug, parseKvadratHtml } from "@/lib/sources/kvadrat";
 import { extractAdaSlug, parseAdaJob } from "@/lib/sources/adadigital";
 import { parseNexerJson } from "@/lib/sources/nexer";
-import { extractWiseId, parseWiseListing } from "@/lib/sources/wise";
+import { extractWiseId, parseWiseJob, parseWiseListing } from "@/lib/sources/wise";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -40,7 +40,8 @@ const SITES = [
   { host: "adadigital.se", parse: () => [], extractId: extractAdaSlug },
   // Nexer Group: jobblistan /wp-json/nexer-blocks/v1/teamtailor_jobs tolkas som JSON.
   { host: "nexergroup.com", parse: () => [], extractId: () => null, json: parseNexerJson },
-  // Wise: listan /lediga-jobb/?pg=N tolkas. &text=1 visar en annonssidas text.
+  // Wise: listan /lediga-jobb/?jobTags=konsult&pg=N tolkas; en annonssidas tolkning visas
+  // under "detail". &text=1 visar en sidas text.
   { host: "wise.se", parse: parseWiseListing, extractId: extractWiseId },
   // Experis och Academic Work: bara för att undersöka sajterna (ingen tolkning än).
   { host: "experis.se", parse: () => [], extractId: () => null },
@@ -340,7 +341,11 @@ export async function GET(req: Request) {
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
       detail: site.host === "adadigital.se"
         ? (parseAdaJob(res.body, res.url) ?? extractJobPosting(cheerio.load(res.body)) ?? undefined)
-        : ["kvadrat.se", "wise.se", "experis.se", "academicwork.se"].includes(site.host)
+        : site.host === "wise.se"
+        ? extractWiseId(res.url)
+          ? (parseWiseJob(res.body) ?? undefined)
+          : undefined
+        : ["kvadrat.se", "experis.se", "academicwork.se"].includes(site.host)
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
