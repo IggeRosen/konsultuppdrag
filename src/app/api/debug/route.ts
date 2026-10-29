@@ -18,6 +18,7 @@ import { extractItjobbSlug, parseItjobbJob } from "@/lib/sources/itjobb";
 import { extractKvadratSlug, parseKvadratHtml } from "@/lib/sources/kvadrat";
 import { extractAdaSlug, parseAdaJob } from "@/lib/sources/adadigital";
 import { parseNexerJson } from "@/lib/sources/nexer";
+import { extractWiseId, parseWiseListing } from "@/lib/sources/wise";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -39,10 +40,9 @@ const SITES = [
   { host: "adadigital.se", parse: () => [], extractId: extractAdaSlug },
   // Nexer Group: jobblistan /wp-json/nexer-blocks/v1/teamtailor_jobs tolkas som JSON.
   { host: "nexergroup.com", parse: () => [], extractId: () => null, json: parseNexerJson },
-  // Wise IT, Experis och Academic Work: bara för att undersöka sajterna (ingen tolkning än).
-  // Annonssidornas JSON-LD JobPosting visas under "detail".
-  { host: "wise.se", parse: () => [], extractId: () => null },
-  { host: "wiseit.se", parse: () => [], extractId: () => null },
+  // Wise: listan /lediga-jobb/?pg=N tolkas. &text=1 visar en annonssidas text.
+  { host: "wise.se", parse: parseWiseListing, extractId: extractWiseId },
+  // Experis och Academic Work: bara för att undersöka sajterna (ingen tolkning än).
   { host: "experis.se", parse: () => [], extractId: () => null },
   { host: "academicwork.se", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
@@ -60,7 +60,8 @@ export const dynamic = "force-dynamic";
  *             /api/debug?url=https://www.keyman.se/sv/uppdrag/
  *             /api/debug?url=https://itjobb.se/robots.txt
  * Visar vad scrapern ser på en sida. Endast de sajter som finns i SITES tillåts.
- * Lägg till &full=1 för att få med hela HTML:en.
+ * Lägg till &full=1 för att få med hela HTML:en, eller &text=1 för bara sidans synliga
+ * text och vanligaste klassnamn (kortare, bra för annonssidor).
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
  * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
@@ -225,6 +226,36 @@ export async function GET(req: Request) {
         jsHints: hints,
       });
     }
+    // &text=1: sidans synliga text (utan meny, sidfot och skript) och de vanligaste
+    // klassnamnen i innehållet – visar hur en annonssida är uppbyggd utan hela HTML:en.
+    if (params.get("text") === "1") {
+      const t = cheerio.load(res.body);
+      t("script, style, noscript, svg, header, nav, footer, form, iframe").remove();
+      const root = t("main, [role='main']").first().length ? t("main, [role='main']").first() : t("body");
+      const classes: Record<string, number> = {};
+      root.find("[class]").each((_, el) => {
+        for (const k of (t(el).attr("class") ?? "").split(/\s+/)) if (k) classes[k] = (classes[k] ?? 0) + 1;
+      });
+      root.find("br").replaceWith("\n");
+      root.find("p, li, h1, h2, h3, h4, h5, h6, div, section").each((_, n) => {
+        t(n).append("\n");
+      });
+      const text = root
+        .text()
+        .split("\n")
+        .map((l) => l.replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .join("\n");
+      return NextResponse.json({
+        status: res.status,
+        finalUrl: res.url,
+        bytes: res.body.length,
+        title: t("title").text().trim(),
+        classes: Object.entries(classes).sort((a, b) => b[1] - a[1]).slice(0, 80).map(([k, n]) => `${k} ×${n}`),
+        text: text.slice(0, 8000),
+      });
+    }
+
     const items = site.parse(res.body, res.url);
     const $ = cheerio.load(res.body);
 
@@ -309,7 +340,7 @@ export async function GET(req: Request) {
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
       detail: site.host === "adadigital.se"
         ? (parseAdaJob(res.body, res.url) ?? extractJobPosting(cheerio.load(res.body)) ?? undefined)
-        : ["kvadrat.se", "wise.se", "wiseit.se", "experis.se", "academicwork.se"].includes(site.host)
+        : ["kvadrat.se", "wise.se", "experis.se", "academicwork.se"].includes(site.host)
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
