@@ -39,6 +39,12 @@ const SITES = [
   { host: "adadigital.se", parse: () => [], extractId: extractAdaSlug },
   // Nexer Group: jobblistan /wp-json/nexer-blocks/v1/teamtailor_jobs tolkas som JSON.
   { host: "nexergroup.com", parse: () => [], extractId: () => null, json: parseNexerJson },
+  // Wise IT, Experis och Academic Work: bara för att undersöka sajterna (ingen tolkning än).
+  // Annonssidornas JSON-LD JobPosting visas under "detail".
+  { host: "wise.se", parse: () => [], extractId: () => null },
+  { host: "wiseit.se", parse: () => [], extractId: () => null },
+  { host: "experis.se", parse: () => [], extractId: () => null },
+  { host: "academicwork.se", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -303,7 +309,7 @@ export async function GET(req: Request) {
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
       detail: site.host === "adadigital.se"
         ? (parseAdaJob(res.body, res.url) ?? extractJobPosting(cheerio.load(res.body)) ?? undefined)
-        : site.host === "kvadrat.se"
+        : ["kvadrat.se", "wise.se", "wiseit.se", "experis.se", "academicwork.se"].includes(site.host)
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
