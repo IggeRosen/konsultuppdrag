@@ -33,9 +33,6 @@ const SITES = [
   // Kvadrat: startsidan på uppdrag.kvadrat.se tolkas (__NUXT_DATA__); en uppdragssidas
   // eventuella JSON-LD JobPosting visas under "detail".
   { host: "kvadrat.se", parse: parseKvadratHtml, extractId: extractKvadratSlug },
-  // Rekryteringsföretagen: bara för att undersöka sajten (ingen tolkning än). Annonssidornas
-  // JSON-LD JobPosting visas under "detail".
-  { host: "rekryteringsforetagen.se", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -298,7 +295,7 @@ export async function GET(req: Request) {
       parsedCount: items.length,
       nextPage: findNextPage(res.body, res.url, site.host),
       // På en Cinode-detaljsida: visa vad detaljtolkningen får ut.
-      detail: site.host === "kvadrat.se" || site.host === "rekryteringsforetagen.se"
+      detail: site.host === "kvadrat.se"
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
