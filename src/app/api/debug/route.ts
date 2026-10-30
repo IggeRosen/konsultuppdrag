@@ -21,6 +21,7 @@ import { parseNexerJson } from "@/lib/sources/nexer";
 import { extractWiseId, parseWiseJob, parseWiseListing } from "@/lib/sources/wise";
 import { experisJobPosting, extractExperisId, parseExperisJob } from "@/lib/sources/experis";
 import { extractAwId, parseAwJob } from "@/lib/sources/academicwork";
+import { parseRpgProject, rpgProjects } from "@/lib/sources/rightpeople";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -49,10 +50,12 @@ const SITES = [
   { host: "experis.se", parse: () => [], extractId: extractExperisId },
   // Academic Work: en annonssidas tolkning (fälten Plats/Omfattning/Typ av uppdrag ur texten) visas under "detail".
   { host: "academicwork.se", parse: () => [], extractId: extractAwId },
-  // Right People Group: bara för att undersöka sajten (ingen tolkning än).
-  // Annonssidornas JSON-LD JobPosting visas under "detail".
-  { host: "rightpeoplegroup.com", parse: () => [], extractId: () => null },
-  { host: "rightpeoplegroup.se", parse: () => [], extractId: () => null },
+  // Right People Group: /sv/open-assignments tolkas ur __NEXT_DATA__ (props.pageProps.projects).
+  {
+    host: "rightpeoplegroup.com",
+    parse: (html: string) => rpgProjects(html).map(parseRpgProject).filter((a): a is NonNullable<typeof a> => !!a),
+    extractId: (url: string) => url.match(/\/open-assignments\/([^/?#]+)/)?.[1] ?? null,
+  },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -430,7 +433,7 @@ export async function GET(req: Request) {
         ? extractAwId(res.url)
           ? (parseAwJob(res.body, res.url) ?? undefined)
           : undefined
-        : ["kvadrat.se", "rightpeoplegroup.com", "rightpeoplegroup.se"].includes(site.host)
+        : site.host === "kvadrat.se"
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
