@@ -49,6 +49,10 @@ const SITES = [
   { host: "experis.se", parse: () => [], extractId: extractExperisId },
   // Academic Work: en annonssidas tolkning (fälten Plats/Omfattning/Typ av uppdrag ur texten) visas under "detail".
   { host: "academicwork.se", parse: () => [], extractId: extractAwId },
+  // Right People Group: bara för att undersöka sajten (ingen tolkning än).
+  // Annonssidornas JSON-LD JobPosting visas under "detail".
+  { host: "rightpeoplegroup.com", parse: () => [], extractId: () => null },
+  { host: "rightpeoplegroup.se", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -356,7 +360,7 @@ export async function GET(req: Request) {
         ? extractAwId(res.url)
           ? (parseAwJob(res.body, res.url) ?? undefined)
           : undefined
-        : site.host === "kvadrat.se"
+        : ["kvadrat.se", "rightpeoplegroup.com", "rightpeoplegroup.se"].includes(site.host)
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
