@@ -50,15 +50,15 @@ function htmlLines(html: string): string[] {
 const FIELDS: Record<string, string[]> = {
   customer: ["kund", "kunde", "client", "customer"],
   location: ["placering", "plats", "ort", "arbetsplats", "arbeidssted", "arbejdssted", "location", "sijainti"],
-  workMode: ["hybrid", "distans", "remote", "på plats"],
+  workMode: ["hybrid", "distans", "remote", "på plats", "arbetssätt", "arbetsform", "work mode"],
   start: ["start", "startdatum", "uppstart", "oppstart", "opstart", "start date", "aloitus"],
   duration: ["längd", "uppdragslängd", "varighet", "varighed", "duration", "period", "kesto"],
-  extent: ["omfattning", "allokering", "beläggning", "allocation", "omfang", "laajuus"],
+  extent: ["omfattning", "allokering", "beläggning", "allocation", "workload", "omfang", "laajuus"],
   deadline: ["sista ansökningsdag", "sista ansökningsdatum", "ansökan senast", "søknadsfrist", "ansøgningsfrist", "deadline"],
 };
 
 // Ansökningsdelen (kontaktperson, e-post) börjar med någon av dessa rader.
-const APPLY = /^(ansökan|är du (tillgänglig|intresserad)|er du interessert|er du interesseret|interested\?|kiinnostunut)/i;
+const APPLY = /^(ansökan|är du (tillgänglig|intresserad)|er du interessert|er du interesseret|(are you )?interested\?|application$|kiinnostunut)/i;
 
 /** Datum i klartext ("9 november 2026", "2026-11-09", "9.11.2026") → ISO. */
 function dateOf(text: string | undefined): string | undefined {
@@ -84,7 +84,8 @@ export function parseRpgProject(p: Obj): Assignment | null {
     const m = line.match(/^([^:]{2,30}):\s*(.+)$/);
     const key = m && Object.keys(FIELDS).find((k) => FIELDS[k].includes(m[1].trim().toLowerCase()));
     if (m && key) {
-      fields[key] ??= key === "workMode" ? `${m[1].trim()}: ${m[2].trim()}` : m[2].trim();
+      // "Hybrid: Minst 3 dagar …" behåller etiketten, "Arbetssätt: Distans möjligt" bara värdet.
+      fields[key] ??= key === "workMode" && /^(hybrid|distans|remote|på plats)$/i.test(m[1].trim()) ? `${m[1].trim()}: ${m[2].trim()}` : m[2].trim();
       if (key !== "deadline") body.push(line);
     } else body.push(line);
   }

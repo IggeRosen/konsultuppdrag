@@ -93,3 +93,25 @@ test("parseRpgProject: norska fält, remote och stängda", () => {
   assert.equal(parseRpgProject(CLOSED), null);
   assert.equal(isRpgRelevant(parseRpgProject(SV)!), true);
 });
+
+test("parseRpgProject: engelska etiketter och 'Are you interested?'", () => {
+  const a = parseRpgProject({
+    documentId: "en1",
+    title: "Consultant Task | Data & Analytics Consultant, Stockholm",
+    slug: "consultant-task-data",
+    description:
+      "<p>We are looking for a consultant.</p><p><strong>Location:</strong> Stockholm, onsite<br><strong>Workload:</strong> 100 %<br>" +
+      "<strong>Start:</strong> ASAP<br><strong>Duration:</strong> 6 months<br><strong>Arbetssätt:</strong> Distans möjligt</p>" +
+      "<p><strong>Are you interested?</strong><br>Send your CV to Jane Doe as soon as possible.</p>",
+    location: "Sweden",
+    open: true,
+  });
+  assert.ok(a);
+  assert.equal(a.location, "Stockholm, onsite");
+  assert.equal(a.extent, "100 %");
+  assert.equal(a.startText, "ASAP");
+  assert.equal(a.start, undefined);
+  assert.equal(a.duration, "6 months");
+  assert.equal(a.workMode, "Distans möjligt");
+  assert.doesNotMatch(a.description ?? "", /Jane Doe|interested/);
+});
