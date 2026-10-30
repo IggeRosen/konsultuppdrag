@@ -56,6 +56,9 @@ const SITES = [
     parse: (html: string) => rpgProjects(html).map(parseRpgProject).filter((a): a is NonNullable<typeof a> => !!a),
     extractId: (url: string) => url.match(/\/open-assignments\/([^/?#]+)/)?.[1] ?? null,
   },
+  // Gigstep: bara för att undersöka sajten (ingen tolkning än).
+  { host: "gigstep.se", parse: () => [], extractId: () => null },
+  { host: "gigstep.com", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -433,7 +436,7 @@ export async function GET(req: Request) {
         ? extractAwId(res.url)
           ? (parseAwJob(res.body, res.url) ?? undefined)
           : undefined
-        : site.host === "kvadrat.se"
+        : ["kvadrat.se", "gigstep.se", "gigstep.com"].includes(site.host)
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
