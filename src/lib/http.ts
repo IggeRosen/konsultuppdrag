@@ -1,3 +1,5 @@
+import { gunzipSync } from "node:zlib";
+
 const USER_AGENT =
   "Mozilla/5.0 (compatible; KonsultuppdragBot/1.0; +https://github.com/iggerosen/konsultuppdrag)";
 
@@ -39,7 +41,10 @@ export async function fetchText(
     res.headers.forEach((v, k) => {
       if (k !== "set-cookie") resHeaders[k] = v;
     });
-    return { status: res.status, url: res.url || url, body: await res.text(), headers: resHeaders };
+    // Gzippade filer (t.ex. sitemap1.xml.gz) packas upp; vanlig Content-Encoding sköter fetch själv.
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const text = bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes).toString("utf8") : new TextDecoder().decode(bytes);
+    return { status: res.status, url: res.url || url, body: text, headers: resHeaders };
   } finally {
     clearTimeout(timer);
   }
