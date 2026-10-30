@@ -21,6 +21,7 @@ import { parseNexerJson } from "@/lib/sources/nexer";
 import { extractWiseId, parseWiseJob, parseWiseListing } from "@/lib/sources/wise";
 import { experisJobPosting, extractExperisId, parseExperisJob } from "@/lib/sources/experis";
 import { extractAwId, parseAwJob } from "@/lib/sources/academicwork";
+import { parseRpgProject, rpgProjects } from "@/lib/sources/rightpeople";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -49,6 +50,12 @@ const SITES = [
   { host: "experis.se", parse: () => [], extractId: extractExperisId },
   // Academic Work: en annonssidas tolkning (fälten Plats/Omfattning/Typ av uppdrag ur texten) visas under "detail".
   { host: "academicwork.se", parse: () => [], extractId: extractAwId },
+  // Right People Group: /sv/open-assignments tolkas ur __NEXT_DATA__ (props.pageProps.projects).
+  {
+    host: "rightpeoplegroup.com",
+    parse: (html: string) => rpgProjects(html).map(parseRpgProject).filter((a): a is NonNullable<typeof a> => !!a),
+    extractId: (url: string) => url.match(/\/open-assignments\/([^/?#]+)/)?.[1] ?? null,
+  },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -65,7 +72,9 @@ export const dynamic = "force-dynamic";
  *             /api/debug?url=https://itjobb.se/robots.txt
  * Visar vad scrapern ser på en sida. Endast de sajter som finns i SITES tillåts.
  * Lägg till &full=1 för att få med hela HTML:en, eller &text=1 för bara sidans synliga
- * text och vanligaste klassnamn (kortare, bra för annonssidor).
+ * text och vanligaste klassnamn (kortare, bra för annonssidor). &paths=1 sammanfattar en sitemap
+ * (antal adresser per sökvägsprefix); &paths=1&grep=ord listar adresserna som innehåller ordet.
+ * &arrays=1 visar listorna i sidans __NEXT_DATA__/JSON-skript (sökväg, längd, fält, första elementet).
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
  * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
@@ -228,6 +237,74 @@ export async function GET(req: Request) {
         relativeUrls: relativeUrls.slice(0, 80),
         config,
         jsHints: hints,
+      });
+    }
+    // &paths=1: sammanfattar en (stor) sitemap – antal adresser per sökvägsprefix (två första
+    // delarna) med exempel. &grep=ord visar i stället de adresser som innehåller ordet.
+    if (params.get("paths") === "1") {
+      const locs = [...res.body.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+      const grep = params.get("grep")?.toLowerCase();
+      if (grep) {
+        const hits = locs.filter((l) => l.toLowerCase().includes(grep));
+        return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: res.body.length, total: locs.length, matches: hits.length, urls: hits.slice(0, 100) });
+      }
+      const groups: Record<string, { count: number; examples: string[] }> = {};
+      for (const l of locs) {
+        let key: string;
+        try {
+          key = new URL(l).pathname.split("/").filter(Boolean).slice(0, 2).join("/") || "/";
+        } catch {
+          continue;
+        }
+        const g = (groups[key] ??= { count: 0, examples: [] });
+        g.count++;
+        if (g.examples.length < 3) g.examples.push(l);
+      }
+      return NextResponse.json({
+        status: res.status,
+        finalUrl: res.url,
+        bytes: res.body.length,
+        total: locs.length,
+        groups: Object.entries(groups).sort((a, b) => b[1].count - a[1].count).slice(0, 80).map(([k, g]) => ({ prefix: k, ...g })),
+      });
+    }
+    // &arrays=1: listorna (arrayer av objekt) i sidans __NEXT_DATA__/JSON-skript med sökväg,
+    // längd, fältnamn och första elementet – visar var t.ex. uppdragen ligger i stora JSON-block.
+    if (params.get("arrays") === "1") {
+      const a$ = cheerio.load(res.body);
+      const found: { script: string; path: string; length: number; keys: string[]; first: string }[] = [];
+      a$('script#__NEXT_DATA__, script[type="application/json"]').each((i, el) => {
+        let data: unknown;
+        try {
+          data = JSON.parse(a$(el).html() ?? "");
+        } catch {
+          return;
+        }
+        const visit = (v: unknown, path: string, depth: number) => {
+          if (depth > 14 || !v || typeof v !== "object") return;
+          if (Array.isArray(v)) {
+            const objs = v.filter((x) => x && typeof x === "object" && !Array.isArray(x));
+            if (objs.length >= 2) {
+              found.push({
+                script: a$(el).attr("id") ?? `#${i}`,
+                path,
+                length: v.length,
+                keys: Object.keys(objs[0] as object).slice(0, 40),
+                first: JSON.stringify(objs[0]).slice(0, 2500),
+              });
+            }
+            v.slice(0, 3).forEach((x, j) => visit(x, `${path}[${j}]`, depth + 1));
+            return;
+          }
+          for (const [k, x] of Object.entries(v)) visit(x, path ? `${path}.${k}` : k, depth + 1);
+        };
+        visit(data, "", 0);
+      });
+      return NextResponse.json({
+        status: res.status,
+        finalUrl: res.url,
+        bytes: res.body.length,
+        arrays: found.sort((a, b) => b.length - a.length).slice(0, 15),
       });
     }
     // &text=1: sidans synliga text (utan meny, sidfot och skript) och de vanligaste

@@ -12,12 +12,13 @@ import { nexer } from "./nexer.ts";
 import { wise } from "./wise.ts";
 import { experis } from "./experis.ts";
 import { academicwork } from "./academicwork.ts";
+import { rightpeople } from "./rightpeople.ts";
 
 /**
  * Registrerade uppdragsportaler. Lägg till en ny källa genom att skapa en
  * adapter (se brainville.ts) och lägga till den här.
  */
-export const SOURCES: SourceAdapter[] = [brainville, cinode, ework, keyman, magnit, emagine, itjobb, kvadrat, adadigital, nexer, wise, experis, academicwork];
+export const SOURCES: SourceAdapter[] = [brainville, cinode, ework, keyman, magnit, emagine, itjobb, kvadrat, adadigital, nexer, wise, experis, academicwork, rightpeople];
 
 /** Portaler som planeras men ännu inte är implementerade – visas i UI:t. */
 export const PLANNED_SOURCES: string[] = [];
