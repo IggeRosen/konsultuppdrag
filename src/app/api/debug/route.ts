@@ -49,12 +49,6 @@ const SITES = [
   { host: "experis.se", parse: () => [], extractId: extractExperisId },
   // Academic Work: en annonssidas tolkning (fälten Plats/Omfattning/Typ av uppdrag ur texten) visas under "detail".
   { host: "academicwork.se", parse: () => [], extractId: extractAwId },
-  // ProData Consult och Sourcing Network: bara för att undersöka sajterna (ingen tolkning än).
-  // Annonssidornas JSON-LD JobPosting visas under "detail".
-  { host: "prodataconsult.com", parse: () => [], extractId: () => null },
-  { host: "prodataconsult.se", parse: () => [], extractId: () => null },
-  { host: "sourcingnetwork.se", parse: () => [], extractId: () => null },
-  { host: "sourcingnetwork.com", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -362,7 +356,7 @@ export async function GET(req: Request) {
         ? extractAwId(res.url)
           ? (parseAwJob(res.body, res.url) ?? undefined)
           : undefined
-        : ["kvadrat.se", "prodataconsult.com", "prodataconsult.se", "sourcingnetwork.se", "sourcingnetwork.com"].includes(site.host)
+        : site.host === "kvadrat.se"
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
