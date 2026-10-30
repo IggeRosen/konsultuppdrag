@@ -96,7 +96,8 @@ export function parseGigstepJob(html: string, url: string): Assignment | null {
   const raw = typeof j.description === "string" ? decodeEntities(j.description) : undefined;
   const text = descriptionOf(raw)
     ?.split("\n")
-    .filter((l) => !/@|\+46|\b0\d{1,3}[- ]?\d{2,3}[ ]?\d{2}[ ]?\d{2}\b/.test(l))
+    // Tomrader (från <li><p>…</p></li>) och rader med e-post/telefon tas bort.
+    .filter((l) => l.trim() && !/@|\+46|\b0\d{1,3}[- ]?\d{2,3}[ ]?\d{2}[ ]?\d{2}\b/.test(l))
     .join("\n");
   const area = fields["Område"];
   return stripEmpty({

@@ -36,7 +36,7 @@ test("parseGigstepJob läser JSON-LD och sidans fält, utan kontaktuppgifter", (
   assert.match(a.description ?? "", /^Är du en erfaren mjukvaruutvecklare/);
   assert.match(a.description ?? "", /Utveckla mjukvarulösningar i C#\/\.NET\./);
   assert.match(a.description ?? "", /Område: Programmering\./);
-  assert.doesNotMatch(a.description ?? "", /@|&lt;|<p>|Moa Hagman/);
+  assert.doesNotMatch(a.description ?? "", /@|&lt;|<p>|Moa Hagman|\n\n/);
   assert.equal(isGigstepRecruitment(a), false);
 });
 
