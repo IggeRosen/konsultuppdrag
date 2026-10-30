@@ -100,6 +100,10 @@ export function parseGigstepJob(html: string, url: string): Assignment | null {
     .filter((l) => l.trim() && !/@|\+46|\b0\d{1,3}[- ]?\d{2,3}[ ]?\d{2}[ ]?\d{2}\b/.test(l))
     .join("\n");
   const area = fields["Område"];
+  // Klassningen görs på hela texten (beskrivningen kortas till 2 500 tecken och slutet,
+  // där anställningsformen ofta står, kan annars försvinna).
+  const full = raw ? cheerio.load(raw).text() : "";
+  const recruitment = isRecruitmentText(`${title}\n${full}`);
   return stripEmpty({
     id: `gigstep:${id}`,
     source: "Gigstep",
@@ -109,17 +113,19 @@ export function parseGigstepJob(html: string, url: string): Assignment | null {
     country: !country || /^(SE|SWE|Sverige|Sweden)$/i.test(country) ? "Sverige" : country,
     published: isoDate(j.datePosted),
     deadline: isoDate(j.validThrough),
-    extent: [...new Set([...types, fields["Anställningsform"]].filter(Boolean))].join(", ") || undefined,
+    extent: [...new Set([recruitment ? "Rekrytering" : undefined, ...types, fields["Anställningsform"]].filter(Boolean))].join(", ") || undefined,
     description: [text, area && `Område: ${area}.`].filter(Boolean).join("\n").slice(0, 2500) || undefined,
   }) as Assignment;
 }
 
-/** Ren rekrytering (anställning hos kunden) snarare än ett gig/konsultuppdrag. */
-export function isGigstepRecruitment(a: Assignment): boolean {
-  const text = `${a.title}\n${a.description ?? ""}`;
+/** Text som beskriver en rekrytering (anställning hos kunden) snarare än ett gig/konsultuppdrag. */
+export function isRecruitmentText(text: string): boolean {
   if (/konsultuppdrag|konsult\b|\bgig\b|uppdrag via gigstep/i.test(text)) return false;
-  return /rekryter|tillsvidareanställ|anställs (direkt )?(av|hos)|anställning hos|direktanställ/i.test(text);
+  return /rekryter|tillsvidare|fast anställning|anställs (direkt )?(av|hos)|anställning hos|direktanställ/i.test(text);
 }
+
+/** Ren rekrytering – markeras i extent av parseGigstepJob. */
+export const isGigstepRecruitment = (a: Assignment) => /rekrytering/i.test(a.extent ?? "");
 
 export const gigstep: SourceAdapter = {
   name: "Gigstep",

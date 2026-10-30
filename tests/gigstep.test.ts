@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { extractGigstepId, isGigstepRecruitment, parseGigstepJob, parseGigstepSitemap } from "../src/lib/sources/gigstep.ts";
-import type { Assignment } from "../src/lib/types.ts";
+import { extractGigstepId, isGigstepRecruitment, isRecruitmentText, parseGigstepJob, parseGigstepSitemap } from "../src/lib/sources/gigstep.ts";
 
 const URL_JOB = "https://jobs.gigstep.se/jobs/8547932-erfaren-c-net-utvecklare-till-langsiktigt-konsultuppdrag-i-lund";
 const html = readFileSync(new URL("./fixtures/gigstep-job.html", import.meta.url), "utf8");
@@ -40,11 +39,25 @@ test("parseGigstepJob läser JSON-LD och sidans fält, utan kontaktuppgifter", (
   assert.equal(isGigstepRecruitment(a), false);
 });
 
-test("isGigstepRecruitment", () => {
-  const base: Assignment = { id: "gigstep:1", source: "Gigstep", title: "HR Manager till SES Nordic Group", url: "" };
-  assert.equal(isGigstepRecruitment({ ...base, description: "Tjänsten är en tillsvidareanställning hos SES Nordic Group." }), true);
-  assert.equal(isGigstepRecruitment({ ...base, description: "Vi rekryterar för kunds räkning." }), true);
-  assert.equal(isGigstepRecruitment({ ...base, title: "QA-testare till Axis", description: "Ett gig på sex månader." }), false);
-  assert.equal(isGigstepRecruitment({ ...base, title: "IT-tekniker", description: "Ett konsultuppdrag hos kund." }), false);
-  assert.equal(isGigstepRecruitment({ ...base, title: "Linuxtekniker", description: "Supportuppdrag i Malmö." }), false);
+test("isRecruitmentText", () => {
+  assert.equal(isRecruitmentText("HR Manager\nTjänsten är en tillsvidareanställning hos SES Nordic Group."), true);
+  assert.equal(isRecruitmentText("HR Manager\nVi rekryterar för kunds räkning."), true);
+  assert.equal(isRecruitmentText("QA-testare till Axis\nEtt gig på sex månader."), false);
+  assert.equal(isRecruitmentText("IT-tekniker\nEtt konsultuppdrag hos kund."), false);
+  assert.equal(isRecruitmentText("Linuxtekniker\nSupportuppdrag i Malmö."), false);
+});
+
+test("parseGigstepJob klassar på hela texten, även efter 2 500 tecken", () => {
+  const long = "Lång text om rollen. ".repeat(200);
+  const page = html
+    .replace("Erfaren C#/.NET-utvecklare till långsiktigt konsultuppdrag i Lund", "HR Manager till SES Nordic Group")
+    .replace(/Nu söker vi en konsult för ett längre uppdrag\./g, long)
+    .replace(/Detta är ett konsultuppdrag via Gigstep hos en av våra kunder i Lund\./g, "Tjänsten är en tillsvidareanställning hos kunden.")
+    .replace(/Om konsultuppdraget/g, "Om tjänsten")
+    .replace(/C#\/\.NET/g, "HR");
+  const a = parseGigstepJob(page, "https://jobs.gigstep.se/jobs/8333104-hr-manager-till-ses-nordic-group");
+  assert.ok(a);
+  assert.doesNotMatch(a.description ?? "", /tillsvidare/);
+  assert.equal(a.extent, "Rekrytering, Heltid");
+  assert.equal(isGigstepRecruitment(a), true);
 });
