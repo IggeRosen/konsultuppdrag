@@ -22,6 +22,7 @@ import { extractWiseId, parseWiseJob, parseWiseListing } from "@/lib/sources/wis
 import { experisJobPosting, extractExperisId, parseExperisJob } from "@/lib/sources/experis";
 import { extractAwId, parseAwJob } from "@/lib/sources/academicwork";
 import { parseRpgProject, rpgProjects } from "@/lib/sources/rightpeople";
+import { extractGigstepId, parseGigstepJob } from "@/lib/sources/gigstep";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -56,9 +57,8 @@ const SITES = [
     parse: (html: string) => rpgProjects(html).map(parseRpgProject).filter((a): a is NonNullable<typeof a> => !!a),
     extractId: (url: string) => url.match(/\/open-assignments\/([^/?#]+)/)?.[1] ?? null,
   },
-  // Gigstep: bara för att undersöka sajten (ingen tolkning än).
-  { host: "gigstep.se", parse: () => [], extractId: () => null },
-  { host: "gigstep.com", parse: () => [], extractId: () => null },
+  // Gigstep (Teamtailor på jobs.gigstep.se): en annonssidas tolkning visas under "detail".
+  { host: "gigstep.se", parse: () => [], extractId: extractGigstepId },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -432,11 +432,15 @@ export async function GET(req: Request) {
         ? extractExperisId(res.url)
           ? { parsed: parseExperisJob(res.body, res.url) ?? undefined, raw: experisJobPosting(res.body) ?? undefined }
           : undefined
+        : site.host === "gigstep.se"
+        ? extractGigstepId(res.url)
+          ? (parseGigstepJob(res.body, res.url) ?? undefined)
+          : undefined
         : site.host === "academicwork.se"
         ? extractAwId(res.url)
           ? (parseAwJob(res.body, res.url) ?? undefined)
           : undefined
-        : ["kvadrat.se", "gigstep.se", "gigstep.com"].includes(site.host)
+        : site.host === "kvadrat.se"
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
