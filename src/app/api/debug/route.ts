@@ -59,6 +59,9 @@ const SITES = [
   },
   // Gigstep (Teamtailor på jobs.gigstep.se): en annonssidas tolkning visas under "detail".
   { host: "gigstep.se", parse: () => [], extractId: extractGigstepId },
+  // A Society: bara för att undersöka sajten (ingen tolkning än).
+  { host: "asociety.se", parse: () => [], extractId: () => null },
+  { host: "asociety.com", parse: () => [], extractId: () => null },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -440,7 +443,7 @@ export async function GET(req: Request) {
         ? extractAwId(res.url)
           ? (parseAwJob(res.body, res.url) ?? undefined)
           : undefined
-        : site.host === "kvadrat.se"
+        : ["kvadrat.se", "asociety.se", "asociety.com"].includes(site.host)
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
