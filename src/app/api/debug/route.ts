@@ -71,6 +71,7 @@ export const dynamic = "force-dynamic";
  * Lägg till &full=1 för att få med hela HTML:en, eller &text=1 för bara sidans synliga
  * text och vanligaste klassnamn (kortare, bra för annonssidor). &paths=1 sammanfattar en sitemap
  * (antal adresser per sökvägsprefix); &paths=1&grep=ord listar adresserna som innehåller ordet.
+ * &arrays=1 visar listorna i sidans __NEXT_DATA__/JSON-skript (sökväg, längd, fält, första elementet).
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
  * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
@@ -262,6 +263,45 @@ export async function GET(req: Request) {
         bytes: res.body.length,
         total: locs.length,
         groups: Object.entries(groups).sort((a, b) => b[1].count - a[1].count).slice(0, 80).map(([k, g]) => ({ prefix: k, ...g })),
+      });
+    }
+    // &arrays=1: listorna (arrayer av objekt) i sidans __NEXT_DATA__/JSON-skript med sökväg,
+    // längd, fältnamn och första elementet – visar var t.ex. uppdragen ligger i stora JSON-block.
+    if (params.get("arrays") === "1") {
+      const a$ = cheerio.load(res.body);
+      const found: { script: string; path: string; length: number; keys: string[]; first: string }[] = [];
+      a$('script#__NEXT_DATA__, script[type="application/json"]').each((i, el) => {
+        let data: unknown;
+        try {
+          data = JSON.parse(a$(el).html() ?? "");
+        } catch {
+          return;
+        }
+        const visit = (v: unknown, path: string, depth: number) => {
+          if (depth > 14 || !v || typeof v !== "object") return;
+          if (Array.isArray(v)) {
+            const objs = v.filter((x) => x && typeof x === "object" && !Array.isArray(x));
+            if (objs.length >= 2) {
+              found.push({
+                script: a$(el).attr("id") ?? `#${i}`,
+                path,
+                length: v.length,
+                keys: Object.keys(objs[0] as object).slice(0, 40),
+                first: JSON.stringify(objs[0]).slice(0, 2500),
+              });
+            }
+            v.slice(0, 3).forEach((x, j) => visit(x, `${path}[${j}]`, depth + 1));
+            return;
+          }
+          for (const [k, x] of Object.entries(v)) visit(x, path ? `${path}.${k}` : k, depth + 1);
+        };
+        visit(data, "", 0);
+      });
+      return NextResponse.json({
+        status: res.status,
+        finalUrl: res.url,
+        bytes: res.body.length,
+        arrays: found.sort((a, b) => b.length - a.length).slice(0, 15),
       });
     }
     // &text=1: sidans synliga text (utan meny, sidfot och skript) och de vanligaste
