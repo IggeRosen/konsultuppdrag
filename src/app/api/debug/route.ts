@@ -69,7 +69,8 @@ export const dynamic = "force-dynamic";
  *             /api/debug?url=https://itjobb.se/robots.txt
  * Visar vad scrapern ser på en sida. Endast de sajter som finns i SITES tillåts.
  * Lägg till &full=1 för att få med hela HTML:en, eller &text=1 för bara sidans synliga
- * text och vanligaste klassnamn (kortare, bra för annonssidor).
+ * text och vanligaste klassnamn (kortare, bra för annonssidor). &paths=1 sammanfattar en sitemap
+ * (antal adresser per sökvägsprefix); &paths=1&grep=ord listar adresserna som innehåller ordet.
  * Cinode: &probe=1 provar vilka adresser "Load more" svarar på.
  * Verama/Magnit: &probe=1 provar tänkbara JSON-API-adresser för uppdragslistan.
  * JavaScript-filer (t.ex. market.cinode.com/dist/js/requests.js) visas som
@@ -232,6 +233,35 @@ export async function GET(req: Request) {
         relativeUrls: relativeUrls.slice(0, 80),
         config,
         jsHints: hints,
+      });
+    }
+    // &paths=1: sammanfattar en (stor) sitemap – antal adresser per sökvägsprefix (två första
+    // delarna) med exempel. &grep=ord visar i stället de adresser som innehåller ordet.
+    if (params.get("paths") === "1") {
+      const locs = [...res.body.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+      const grep = params.get("grep")?.toLowerCase();
+      if (grep) {
+        const hits = locs.filter((l) => l.toLowerCase().includes(grep));
+        return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: res.body.length, total: locs.length, matches: hits.length, urls: hits.slice(0, 100) });
+      }
+      const groups: Record<string, { count: number; examples: string[] }> = {};
+      for (const l of locs) {
+        let key: string;
+        try {
+          key = new URL(l).pathname.split("/").filter(Boolean).slice(0, 2).join("/") || "/";
+        } catch {
+          continue;
+        }
+        const g = (groups[key] ??= { count: 0, examples: [] });
+        g.count++;
+        if (g.examples.length < 3) g.examples.push(l);
+      }
+      return NextResponse.json({
+        status: res.status,
+        finalUrl: res.url,
+        bytes: res.body.length,
+        total: locs.length,
+        groups: Object.entries(groups).sort((a, b) => b[1].count - a[1].count).slice(0, 80).map(([k, g]) => ({ prefix: k, ...g })),
       });
     }
     // &text=1: sidans synliga text (utan meny, sidfot och skript) och de vanligaste
