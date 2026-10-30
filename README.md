@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb**, **Kvadrat**, **ADA Digital**, **Nexer**, **Wise**, **Experis** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb**, **Kvadrat**, **ADA Digital**, **Nexer**, **Wise**, **Experis**, **Academic Work** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
 
 ## Funktioner
 
@@ -33,6 +33,7 @@ src/lib/sources/adadigital.ts        ADA Digital (sitemap + JSON-LD JobPosting p
 src/lib/sources/nexer.ts             Nexer (Teamtailor-jobb via Nexers öppna WordPress-gränssnitt)
 src/lib/sources/wise.ts               Wise (konsultuppdrag från listan över lediga jobb + annonssidor)
 src/lib/sources/experis.ts            Experis (sitemap + annonssidornas JSON-LD, bara konsultuppdrag)
+src/lib/sources/academicwork.ts       Academic Work (sitemap + annonssidornas text, bara konsultuppdrag)
 src/lib/sources/platsbanken.ts       Platsbanken via Arbetsförmedlingens JobSearch-API (bara vid nyckelordssökning)
 src/lib/sources/emagine-search.ts    sökförfrågan: portalens format + inlärning ur valideringsfel
 src/lib/sweden.ts                    Sverigefilter för källor med uppdrag i flera länder
@@ -216,6 +217,17 @@ innan tolkning. `employmentType` är "Konsultuppdrag" eller "Rekrytering till f�
 (anställning hos kunden) hoppas över om inte `EXPERIS_ALL_TYPES=1`. robots.txt spärrar bara `/candidate`.
 `/api/debug?url=<annonsadress>` visar tolkningen och rå JobPosting under `detail`.
 
+### Academic Work
+
+[Academic Work](https://www.academicwork.se/lediga-jobb) listar sina annonser i
+`https://www.academicwork.se/sitemap.xml` som `/lediga-jobb/j/<slug>/<KOD>` (cirka 400). robots.txt spärrar
+`/api/`, så deras API används inte. Annonssidorna saknar JSON-LD; fälten läses ur sidans text:
+"Plats:", "Startdatum:", "Omfattning:" och "Typ av uppdrag:". Bara annonser med typen **Konsultuppdrag**
+tas med (`ACADEMICWORK_ALL_TYPES=1` visar alla). Eftersom sitemapen är stor hämtas bara de senast ändrade
+annonserna (`ACADEMICWORK_MAX_DETAILS`, standard 150). Annonstexten tas från "Om tjänsten" fram till
+rekryteringsprocessen; kontaktadresser och listan med liknande jobb tas inte med.
+`/api/debug?url=<annonsadress>` visar tolkningen under `detail`.
+
 ### Platsbanken (Arbetsförmedlingen)
 
 Platsbanken hämtas via Arbetsförmedlingens öppna JobSearch-API (JobTech Dev):
@@ -250,7 +262,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`, `ADADIGITAL_MAX_DETAILS`, `NEXER_ALL_COUNTRIES`, `WISE_MAX_PAGES`, `WISE_MAX_DETAILS`, `EXPERIS_MAX_DETAILS`, `EXPERIS_ALL_TYPES`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`, `ADADIGITAL_MAX_DETAILS`, `NEXER_ALL_COUNTRIES`, `WISE_MAX_PAGES`, `WISE_MAX_DETAILS`, `EXPERIS_MAX_DETAILS`, `EXPERIS_ALL_TYPES`, `ACADEMICWORK_MAX_DETAILS`, `ACADEMICWORK_ALL_TYPES`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida
