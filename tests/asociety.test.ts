@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { asocietySlug, asocietyUrl, parseAsocietyPage, rscPayload, rscTextRows } from "../src/lib/sources/asociety.ts";
+import { asocietySlug, asocietyUrl, parseAsocietyPage, parseAsocietyRequisition, rscPayload, rscTextRows } from "../src/lib/sources/asociety.ts";
 
 // Uppbyggt som sidans RSC-data (2026-11-02): uppdragsobjekt i en push, beskrivningen som
 // textrad "34:T<längd i byte>,<text>" i en annan. Kontaktuppgifterna är fejkade.
@@ -78,6 +78,9 @@ test("parseAsocietyPage läser uppdragen utan kontaktuppgifter", () => {
   assert.match(a.description ?? "", /Område: Engineering, Software\./);
   assert.doesNotMatch(a.description ?? "", /@|\+46|Kontakt Person|&lt;|<p>/);
   assert.equal(b.country, "International");
+  const long = parseAsocietyRequisition({ ...JOBS[0], requisition_description: "Lång text. ".repeat(400) });
+  assert.ok(long);
+  assert.match(long.description ?? "", /\nOmråde: Engineering, Software\.$/);
   assert.equal(b.workMode, "På plats");
   assert.match(b.description ?? "", /Short \{text\} with "quotes"/);
 });

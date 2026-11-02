@@ -140,7 +140,8 @@ export function parseAsocietyRequisition(o: Obj, texts: Map<string, string> = ne
     end: isoDate(o.requisition_enddate),
     extent: pct ? `${pct} %` : undefined,
     workMode: mode ? (WORK_MODE[mode.toLowerCase()] ?? mode) : undefined,
-    description: [description, area && `Område: ${area}.`].filter(Boolean).join("\n").slice(0, 2500) || undefined,
+    // Beskrivningen kortas först så att området alltid kommer med.
+    description: [description?.slice(0, 2400), area && `Område: ${area}.`].filter(Boolean).join("\n") || undefined,
   }) as Assignment;
 }
 
