@@ -23,6 +23,7 @@ import { experisJobPosting, extractExperisId, parseExperisJob } from "@/lib/sour
 import { extractAwId, parseAwJob } from "@/lib/sources/academicwork";
 import { parseRpgProject, rpgProjects } from "@/lib/sources/rightpeople";
 import { extractGigstepId, parseGigstepJob } from "@/lib/sources/gigstep";
+import { parseAsocietyPage } from "@/lib/sources/asociety";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -59,8 +60,12 @@ const SITES = [
   },
   // Gigstep (Teamtailor på jobs.gigstep.se): en annonssidas tolkning visas under "detail".
   { host: "gigstep.se", parse: () => [], extractId: extractGigstepId },
-  // A Society (asocietygroup.com; asociety.se spärrar allt i robots.txt): bara för att undersöka /sv/uppdrag.
-  { host: "asocietygroup.com", parse: () => [], extractId: () => null },
+  // A Society: /sv/uppdrag tolkas ur sidans RSC-data (asociety.se spärrar allt i robots.txt).
+  {
+    host: "asocietygroup.com",
+    parse: parseAsocietyPage,
+    extractId: (url: string) => url.match(/\/uppdrag\/[^/?#]*-(\d+)\/?(?:[?#]|$)/)?.[1] ?? null,
+  },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -457,7 +462,7 @@ export async function GET(req: Request) {
         ? extractAwId(res.url)
           ? (parseAwJob(res.body, res.url) ?? undefined)
           : undefined
-        : ["kvadrat.se", "asocietygroup.com"].includes(site.host)
+        : site.host === "kvadrat.se"
         ? (extractJobPosting(cheerio.load(res.body)) ?? undefined)
         : site.host === "itjobb.se"
         ? (parseItjobbJob(res.body, res.url) ?? undefined)
