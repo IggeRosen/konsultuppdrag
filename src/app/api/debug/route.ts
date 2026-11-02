@@ -244,6 +244,21 @@ export async function GET(req: Request) {
         jsHints: hints,
       });
     }
+    // &find=ord på en HTML-sida: utdrag runt varje förekomst (t.ex. i Next.js RSC-data
+    // self.__next_f.push(...) som inte syns i texten). &after=N visar mer efter träffen.
+    if (params.get("find")) {
+      const word = params.get("find")!;
+      const after = Math.min(5000, Math.max(100, Number(params.get("after") ?? 400) || 400));
+      const snippets: string[] = [];
+      let idx = res.body.indexOf(word);
+      while (idx >= 0 && snippets.length < 25) {
+        snippets.push(res.body.slice(Math.max(0, idx - 300), Math.min(res.body.length, idx + after)));
+        idx = res.body.indexOf(word, idx + after);
+      }
+      let total = 0;
+      for (let i = res.body.indexOf(word); i >= 0; i = res.body.indexOf(word, i + 1)) total++;
+      return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: res.body.length, find: word, total, snippets });
+    }
     // &paths=1: sammanfattar en (stor) sitemap – antal adresser per sökvägsprefix (två första
     // delarna) med exempel. &grep=ord visar i stället de adresser som innehåller ordet.
     if (params.get("paths") === "1") {
