@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb**, **Kvadrat**, **ADA Digital**, **Nexer**, **Wise**, **Experis**, **Academic Work**, **Right People Group**, **Gigstep** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb**, **Kvadrat**, **ADA Digital**, **Nexer**, **Wise**, **Experis**, **Academic Work**, **Right People Group**, **Gigstep**, **A Society** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
 
 ## Funktioner
 
@@ -36,6 +36,7 @@ src/lib/sources/experis.ts            Experis (sitemap + annonssidornas JSON-LD,
 src/lib/sources/academicwork.ts       Academic Work (sitemap + annonssidornas text, bara konsultuppdrag)
 src/lib/sources/rightpeople.ts        Right People Group (__NEXT_DATA__ på listsidan, Sverige + remote)
 src/lib/sources/gigstep.ts            Gigstep (Teamtailor: sitemap + JSON-LD, utan rena rekryteringar)
+src/lib/sources/asociety.ts           A Society (RSC-data på uppdragslistan, bara Sverige)
 src/lib/sources/platsbanken.ts       Platsbanken via Arbetsförmedlingens JobSearch-API (bara vid nyckelordssökning)
 src/lib/sources/emagine-search.ts    sökförfrågan: portalens format + inlärning ur valideringsfel
 src/lib/sweden.ts                    Sverigefilter för källor med uppdrag i flera länder
@@ -251,6 +252,17 @@ tas inte med. Rena rekryteringar (t.ex. tillsvidareanställning hos kunden) hopp
 `GIGSTEP_ALL_TYPES=1`. `GIGSTEP_MAX_DETAILS` (standard 60) begränsar antalet annonssidor.
 `/api/debug?url=<annonsadress>` visar tolkningen under `detail`.
 
+### A Society
+
+[A Society](https://www.asocietygroup.com/sv/uppdrag) har sina uppdrag på asocietygroup.com, vars robots.txt
+bara spärrar `/hidden/` (asociety.se spärrar allt och används inte). Uppdragslistan `/sv/uppdrag` är en
+Next.js-sida där alla öppna uppdrag (cirka 120) ligger i sidans RSC-data (`self.__next_f.push(...)`) med fälten
+`requisition_name`, `requisition_locationid`, `requisition_remotework`, `requisition_startdate`/`enddate`,
+`requisition_offerduedate` och `abstract_id`; beskrivningen är en textrad i samma data. Ett anrop räcker.
+Annonslänken byggs som `/sv/uppdrag/<slug>-<abstract_id>`. Kontaktpersonens namn, e-post och telefon tas inte
+med. Bara uppdrag i Sverige tas med (`ASOCIETY_ALL_COUNTRIES=1` visar alla).
+`/api/debug?url=https://www.asocietygroup.com/sv/uppdrag` visar tolkningen.
+
 ### Platsbanken (Arbetsförmedlingen)
 
 Platsbanken hämtas via Arbetsförmedlingens öppna JobSearch-API (JobTech Dev):
@@ -285,7 +297,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`, `ADADIGITAL_MAX_DETAILS`, `NEXER_ALL_COUNTRIES`, `WISE_MAX_PAGES`, `WISE_MAX_DETAILS`, `EXPERIS_MAX_DETAILS`, `EXPERIS_ALL_TYPES`, `ACADEMICWORK_MAX_DETAILS`, `ACADEMICWORK_ALL_TYPES`, `RIGHTPEOPLE_ALL_COUNTRIES`, `GIGSTEP_MAX_DETAILS`, `GIGSTEP_ALL_TYPES`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`, `ADADIGITAL_MAX_DETAILS`, `NEXER_ALL_COUNTRIES`, `WISE_MAX_PAGES`, `WISE_MAX_DETAILS`, `EXPERIS_MAX_DETAILS`, `EXPERIS_ALL_TYPES`, `ACADEMICWORK_MAX_DETAILS`, `ACADEMICWORK_ALL_TYPES`, `RIGHTPEOPLE_ALL_COUNTRIES`, `GIGSTEP_MAX_DETAILS`, `GIGSTEP_ALL_TYPES`, `ASOCIETY_ALL_COUNTRIES`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida

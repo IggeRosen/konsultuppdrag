@@ -23,6 +23,7 @@ import { experisJobPosting, extractExperisId, parseExperisJob } from "@/lib/sour
 import { extractAwId, parseAwJob } from "@/lib/sources/academicwork";
 import { parseRpgProject, rpgProjects } from "@/lib/sources/rightpeople";
 import { extractGigstepId, parseGigstepJob } from "@/lib/sources/gigstep";
+import { parseAsocietyPage } from "@/lib/sources/asociety";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -59,6 +60,12 @@ const SITES = [
   },
   // Gigstep (Teamtailor på jobs.gigstep.se): en annonssidas tolkning visas under "detail".
   { host: "gigstep.se", parse: () => [], extractId: extractGigstepId },
+  // A Society: /sv/uppdrag tolkas ur sidans RSC-data (asociety.se spärrar allt i robots.txt).
+  {
+    host: "asocietygroup.com",
+    parse: parseAsocietyPage,
+    extractId: (url: string) => url.match(/\/uppdrag\/[^/?#]*-(\d+)\/?(?:[?#]|$)/)?.[1] ?? null,
+  },
   { host: "emagine-consulting.se", parse: parseEmagineListing, extractId: extractEmagineId, json: parseEmagineJson },
   // Magnit Sources API-server (bara exakt denna värd, inte alla azurewebsites.net)
   { host: new URL(MAGNIT_GATEWAY).hostname, parse: parseMagnitHtml, extractId: extractMagnitId, exact: true, json: parseMagnitJson },
@@ -241,6 +248,21 @@ export async function GET(req: Request) {
         config,
         jsHints: hints,
       });
+    }
+    // &find=ord på en HTML-sida: utdrag runt varje förekomst (t.ex. i Next.js RSC-data
+    // self.__next_f.push(...) som inte syns i texten). &after=N visar mer efter träffen.
+    if (params.get("find")) {
+      const word = params.get("find")!;
+      const after = Math.min(5000, Math.max(100, Number(params.get("after") ?? 400) || 400));
+      const snippets: string[] = [];
+      let idx = res.body.indexOf(word);
+      while (idx >= 0 && snippets.length < 25) {
+        snippets.push(res.body.slice(Math.max(0, idx - 300), Math.min(res.body.length, idx + after)));
+        idx = res.body.indexOf(word, idx + after);
+      }
+      let total = 0;
+      for (let i = res.body.indexOf(word); i >= 0; i = res.body.indexOf(word, i + 1)) total++;
+      return NextResponse.json({ status: res.status, finalUrl: res.url, bytes: res.body.length, find: word, total, snippets });
     }
     // &paths=1: sammanfattar en (stor) sitemap – antal adresser per sökvägsprefix (två första
     // delarna) med exempel. &grep=ord visar i stället de adresser som innehåller ordet.
