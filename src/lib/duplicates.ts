@@ -10,7 +10,9 @@ import type { Assignment } from "./types.ts";
 //     • beskrivningen är minst 92 % lik (kopierad text) OCH titeln minst 60 % lik.
 //
 //   MISSTÄNKT dubblett (50–99 %) annars, med en sannolikhet som byggs upp av poäng:
-//     • titelns likhet (0–55 p): ord- och teckenlikhet, datum och "Konsultuppdrag –" bortrensade,
+//     • titelns likhet (0–55 p): ord- och teckenlikhet, datum och "Konsultuppdrag –" bortrensade;
+//       korta, allmänna titlar (högst två ord, t.ex. "Business Analyst") ger högst 65 p när
+//       beskrivning saknas, längre titlar 90 p,
 //     • beskrivningens likhet (0–35 p): andel gemensamma fyrordsföljder (shingles); saknas
 //       beskrivning på någon sida skalas titelpoängen upp i stället; är texterna under 30 %
 //       lika dras 15 p av (mäklare kopierar oftast kundens text),
@@ -167,14 +169,35 @@ const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(
 
 interface Prepared {
   a: Assignment;
+  norm: string;
   tokens: string[];
+  tokenSet: Set<string>;
+  grams: Set<string>;
   sh: Set<string> | null;
   url: string;
   places: Set<string>;
 }
 
 function prepare(a: Assignment): Prepared {
-  return { a, tokens: titleTokens(a.title), sh: shingles(a.description), url: normUrl(a.url), places: places(a.location) };
+  const norm = normalizeTitle(a.title);
+  const tokens = titleTokens(a.title);
+  return {
+    a,
+    norm,
+    tokens,
+    tokenSet: new Set(tokens),
+    grams: bigrams(norm),
+    sh: shingles(a.description),
+    url: normUrl(a.url),
+    places: places(a.location),
+  };
+}
+
+/** Samma som titleSimilarity men med förberäknade delar. */
+function preparedTitleSimilarity(p: Prepared, q: Prepared): number {
+  if (!p.norm || !q.norm) return 0;
+  if (p.norm === q.norm) return 1;
+  return Math.max(dice(p.tokenSet, q.tokenSet), dice(p.grams, q.grams));
 }
 
 /** Bedömer om två uppdrag är samma uppdrag. Returnerar null under MIN_CONFIDENCE. */
@@ -194,7 +217,9 @@ function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
     return pair(100, true);
   }
 
-  const tSim = titleSimilarity(x.title, y.title);
+  const tSim = preparedTitleSimilarity(p, q);
+  // Så olika titlar är olika uppdrag; hoppa över den dyrare textjämförelsen.
+  if (tSim < 0.3) return null;
   const dSim = textSimilarity(p.sh, q.sh);
   if (tSim >= 0.95) reasons.push("Samma titel");
   else if (tSim >= 0.5) reasons.push(`Titeln ${pct(tSim)} lik`);
@@ -210,7 +235,10 @@ function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
   }
 
   // Titel 0–55 p, beskrivning 0–35 p (saknas den räknas titeln för båda).
-  let score = dSim === null ? tSim * 90 : tSim * 55 + dSim * 35;
+  // Korta, allmänna titlar ("Business Analyst") säger lite om vilket uppdrag det är, så utan
+  // beskrivning att jämföra väger de mindre än längre titlar.
+  const generic = Math.min(p.tokens.length, q.tokens.length) <= 2;
+  let score = dSim === null ? tSim * (generic ? 65 : 90) : tSim * 55 + dSim * 35;
   // Mäklare kopierar oftast kundens text, så helt olika beskrivningar talar emot.
   if (dSim !== null && dSim < 0.3) score -= 15;
   score += addContext(p, q, reasons, against);
@@ -263,22 +291,29 @@ function candidatePairs(prep: Prepared[]): [number, number][] {
     for (const t of p.tokens) (byToken.get(t) ?? byToken.set(t, []).get(t)!).push(i);
     (byUrl.get(p.url) ?? byUrl.set(p.url, []).get(p.url)!).push(i);
   });
-  // Mycket vanliga ord ("senior", "utvecklare") ger för många kandidater och säger lite.
-  const maxPosting = Math.max(40, Math.round(prep.length * 0.05));
-  const shared = new Map<string, number>();
-  const key = (i: number, j: number) => (i < j ? `${i},${j}` : `${j},${i}`);
+  // Bara extremt vanliga ord hoppas över (de ger för många kandidater). Vanliga ord som
+  // "business" och "analyst" måste vara med, annars jämförs aldrig "Business Analyst"-annonser.
+  const maxPosting = Math.max(400, Math.round(prep.length * 0.3));
+  const n = prep.length;
+  const shared = new Map<number, number>();
   for (const ids of byToken.values()) {
     if (ids.length < 2 || ids.length > maxPosting) continue;
-    for (let m = 0; m < ids.length; m++) for (let n = m + 1; n < ids.length; n++) shared.set(key(ids[m], ids[n]), (shared.get(key(ids[m], ids[n])) ?? 0) + 1);
+    for (let m = 0; m < ids.length; m++) {
+      for (let k = m + 1; k < ids.length; k++) {
+        const key = ids[m] * n + ids[k];
+        shared.set(key, (shared.get(key) ?? 0) + 1);
+      }
+    }
   }
-  const out = new Set<string>();
-  for (const [k, n] of shared) {
-    const [i, j] = k.split(",").map(Number);
+  const out = new Set<number>();
+  for (const [key, count] of shared) {
+    const i = Math.floor(key / n);
+    const j = key % n;
     const fewTokens = Math.min(prep[i].tokens.length, prep[j].tokens.length) <= 2;
-    if (n >= 2 || (fewTokens && n >= 1)) out.add(k);
+    if (count >= 2 || (fewTokens && count >= 1)) out.add(key);
   }
-  for (const ids of byUrl.values()) for (let m = 0; m < ids.length; m++) for (let n = m + 1; n < ids.length; n++) out.add(key(ids[m], ids[n]));
-  return [...out].map((k) => k.split(",").map(Number) as [number, number]);
+  for (const ids of byUrl.values()) for (let m = 0; m < ids.length; m++) for (let k = m + 1; k < ids.length; k++) out.add(ids[m] * n + ids[k]);
+  return [...out].map((key) => [Math.floor(key / n), key % n] as [number, number]);
 }
 
 class UnionFind {

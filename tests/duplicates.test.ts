@@ -82,3 +82,32 @@ test("analyzeDuplicates grupperar och räknar överflödiga uppdrag", () => {
   assert.equal(r.overlap.matrix[0][1], 1);
   assert.equal(r.buckets.find((b) => b.label === "Säker")?.count, 1);
 });
+
+test("vanliga titelord som 'Business Analyst' utesluter inte paret från jämförelse", () => {
+  // Fler än 5 % av annonserna innehåller "business" eller "analyst", så orden räknas som vanliga.
+  const filler = Array.from({ length: 80 }, (_, i) =>
+    a({ id: `f:${i}`, source: "F", url: `https://f.se/${i}`, title: i % 2 ? `Business Controller ${i}` : `Data Analyst nivå ${i}`, description: `Egen text nummer ${i} `.repeat(20) }),
+  );
+  const list = [
+    ...filler,
+    a({ id: "a:ba", source: "A", url: "https://a.se/ba", title: "Business Analyst", description: LOREM, location: "Stockholm" }),
+    a({ id: "b:ba", source: "B", url: "https://b.se/ba", title: "Business Analyst – Region Stockholm", description: LOREM, location: "Stockholm" }),
+  ];
+  const r = analyzeDuplicates(list);
+  const g = r.groups.find((x) => x.items.some((i) => i.id === "a:ba"));
+  assert.ok(g, "Business Analyst-paret ska hittas");
+  assert.deepEqual(g.items.map((i) => i.id).sort(), ["a:ba", "b:ba"]);
+});
+
+test("korta, allmänna titlar utan beskrivning ger bara måttlig misstanke", () => {
+  const same = comparePair(
+    a({ id: "a:g", source: "A", url: "https://a.se/g", title: "Business Analyst", location: "Stockholm" }),
+    a({ id: "b:g", source: "B", url: "https://b.se/g", title: "Business Analyst", location: "Stockholm" }),
+  );
+  assert.ok(same && !same.certain && same.confidence < 80, String(same?.confidence));
+  const otherCity = comparePair(
+    a({ id: "a:h", source: "A", url: "https://a.se/h", title: "Business Analyst", location: "Malmö" }),
+    a({ id: "b:h", source: "B", url: "https://b.se/h", title: "Business Analyst", location: "Luleå" }),
+  );
+  assert.equal(otherCity, null);
+});
