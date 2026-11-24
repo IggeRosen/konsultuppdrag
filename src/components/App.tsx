@@ -104,18 +104,22 @@ export default function App() {
     setReady(true);
   }, []);
 
-  // Dubblettanalysen görs på hela listan och hämtas efter uppdragen (samma cache på servern).
-  const fetchDups = useCallback(async (refresh = false) => {
+  // Dubblettanalysen görs på samma annonser som listan (samma nyckelord, inklusive Platsbanken)
+  // och hämtas efter uppdragen, när servern redan har dem i cache. Bara senaste svaret används.
+  const dupRequest = useRef(0);
+  const fetchDups = useCallback(async (qs: URLSearchParams) => {
+    const req = ++dupRequest.current;
     setDupLoading(true);
     setDupError(null);
     try {
-      const res = await fetch(`/api/duplicates${refresh ? "?refresh=1" : ""}`);
+      const res = await fetch(`/api/duplicates?${qs}`);
       if (!res.ok) throw new Error(`Servern svarade ${res.status}`);
-      setDups((await res.json()) as DuplicateReport);
+      const json = (await res.json()) as DuplicateReport;
+      if (req === dupRequest.current) setDups(json);
     } catch (e) {
-      setDupError(e instanceof Error ? e.message : "Något gick fel");
+      if (req === dupRequest.current) setDupError(e instanceof Error ? e.message : "Något gick fel");
     } finally {
-      setDupLoading(false);
+      if (req === dupRequest.current) setDupLoading(false);
     }
   }, []);
 
@@ -155,7 +159,7 @@ export default function App() {
         if (!res.ok) throw new Error(`Servern svarade ${res.status}`);
         const json = (await res.json()) as ApiResponse;
         setData(json);
-        fetchDups(refresh);
+        fetchDups(new URLSearchParams({ keywords: keywords.join(","), mode }));
         // Markera allt som hämtats som "sett" till nästa besök.
         const ids = json.results.map((r) => r.id);
         setSeen((prev) => {

@@ -56,7 +56,7 @@ test("olika ort och olika text sänker eller fäller bedömningen", () => {
 
 test("mallartade titlar med helt olika beskrivningar räknas inte som dubbletter", () => {
   const list = Array.from({ length: 6 }, (_, i) =>
-    a({ id: `s:${i}`, source: ["A", "B"][i % 2], url: `https://s.se/${i}`, title: `Unikt uppdrag nummer ${i} inom område ${"abcdef"[i]}`, description: `Helt egen text ${i} `.repeat(30), location: "Stockholm" }),
+    a({ id: `s:${i}`, source: ["A", "B"][i % 2], url: `https://s.se/${i}`, title: `Unikt uppdrag nummer ${i} inom område ${"abcdef"[i]}`, description: Array.from({ length: 40 }, (_, k) => `ord${i * 100 + k}`).join(" "), location: "Stockholm" }),
   );
   assert.equal(analyzeDuplicates(list).groups.length, 0);
 });
@@ -138,4 +138,40 @@ test("orter i samma region räknas inte som olika orter", () => {
     a({ id: "y:1", source: "B", url: "https://y.se/1", title: "Business Analyst till HellermannTyton", location: "Stockholm" }),
   );
   assert.ok(q?.reasons.some((r) => r.startsWith("Samma ort")));
+});
+
+test("omskrivna annonser om samma uppdrag på en ovanlig ort grupperas", () => {
+  // Olika bemanningsföretag skriver egna texter om samma uppdrag (som på Platsbanken).
+  const pad = Array.from({ length: 200 }, (_, i) =>
+    a({ id: `p:${i}`, source: `P${i % 5}`, url: `https://p.se/${i}`, title: `Utvecklare ${i} inom område ${i}`, location: "Stockholm",
+       description: Array.from({ length: 60 }, (_, k) => `ord${(i * 7 + k) % 300}`).join(" ") + " erfarenhet kund team processer behov" }),
+  );
+  const ba = (id: string, company: string, title: string, intro: string) =>
+    a({ id, source: "Platsbanken", company, url: `https://pb.se/${id}`, title, location: "Finspång",
+       description: `${intro} Du arbetar med PLM och Teamcenter hos en gasturbintillverkare i Finspång. Produktdata, datakvalitet och processer i PLM-miljön står i fokus, och du samarbetar med verksamheten kring Teamcenter och produktstrukturer.` });
+  const list = [
+    ...pad,
+    ba("pb:1", "UNIK Resurs", "Businees Analyst inom PLM", "Till vår kund inom tillverkande industrin söker vi en Business Analyst för ett uppdrag."),
+    ba("pb:2", "TIKK TAKK", "Business Analyst inom PLM-system till energiteknikföretag", "Vi söker en Business Analyst med erfarenhet av Product Lifecycle Management."),
+    ba("pb:3", "Skill", "Business Analyst till gasturbintillverkare", "Företaget möter den ökade efterfrågan på energi i över 90 länder."),
+    a({ id: "pb:9", source: "Platsbanken", company: "Skill", url: "https://pb.se/9", title: "Dokument- och arkivmedarbetare till gasturbintillverkare", location: "Finspång",
+        description: "Företaget möter den ökade efterfrågan på energi. Du skannar, arkiverar och registrerar dokument i arkivet och hjälper kollegor att hitta ritningar och underlag i dokumenthanteringen." }),
+  ];
+  const r = analyzeDuplicates(list);
+  const g = r.groups.find((x) => x.items.some((i) => i.id === "pb:1"));
+  assert.ok(g, "Business Analyst-annonserna ska bilda en grupp");
+  assert.deepEqual(g.items.map((i) => i.id).sort(), ["pb:1", "pb:2", "pb:3"]);
+  assert.ok(g.pairs.some((p) => p.reasons.some((r) => r.includes("ovanlig ort"))));
+});
+
+test("kundens egen annons med annan text kopplas till mäklarnas annonser på en ovanlig ort", () => {
+  // Som Siemens Energys "Business Analyst PLM" (31692116) mot UNIK:s "Businees Analyst inom PLM"
+  // (31740925): bara ~16 % lik text, men samma ovanliga ort.
+  const pad = Array.from({ length: 200 }, (_, i) =>
+    a({ id: `p:${i}`, source: `P${i % 5}`, url: `https://p.se/${i}`, title: `Utvecklare ${i} inom område ${i}`, location: "Stockholm" }),
+  );
+  const own = a({ id: "pb:siemens", source: "Platsbanken", company: "Siemens Energy AB", url: "https://pb.se/s", title: "Business Analyst PLM", location: "Finspång" });
+  const broker = a({ id: "pb:unik", source: "Platsbanken", company: "UNIK Resurs", url: "https://pb.se/u", title: "Businees Analyst inom PLM", location: "Finspång" });
+  const r = analyzeDuplicates([...pad, own, broker]);
+  assert.ok(r.groups.some((g) => g.items.some((i) => i.id === "pb:siemens") && g.items.some((i) => i.id === "pb:unik")));
 });
