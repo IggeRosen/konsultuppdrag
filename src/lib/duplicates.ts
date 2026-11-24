@@ -455,9 +455,14 @@ const BUCKETS = [
   { label: "Säker", min: 100, max: 100 },
 ];
 
-export function analyzeDuplicates(assignments: Assignment[]): DuplicateReport {
+/**
+ * Analyserar `assignments` (t.ex. listan filtrerad på nyckelord). Hur vanliga ord och orter är
+ * räknas på `corpus`, normalt hela uppdragslistan: i en lista filtrerad på "PLM" är både "PLM"
+ * och orten Finspång vanliga, fast de är ovanliga och därför talande bland alla uppdrag.
+ */
+export function analyzeDuplicates(assignments: Assignment[], corpus: Assignment[] = assignments): DuplicateReport {
   const prep = assignments.map(prepare);
-  const ctx = buildContext(prep);
+  const ctx = buildContext(corpus === assignments ? prep : corpus.map(prepare));
   const pairs: { i: number; j: number; p: DuplicatePair }[] = [];
   for (const [i, j] of candidatePairs(prep)) {
     const p = compareInner(prep[i], prep[j], ctx);
@@ -523,9 +528,9 @@ export function analyzeDuplicates(assignments: Assignment[]): DuplicateReport {
  * Felsökning: alla uppdrag vars titel innehåller `query` och bedömningen av varje par mellan
  * dem, även under MIN_CONFIDENCE, samt om paret alls valdes ut för jämförelse.
  */
-export function explainDuplicates(assignments: Assignment[], query: string) {
+export function explainDuplicates(assignments: Assignment[], query: string, corpus: Assignment[] = assignments) {
   const prep = assignments.map(prepare);
-  const ctx = buildContext(prep);
+  const ctx = buildContext(corpus === assignments ? prep : corpus.map(prepare));
   const q = fold(query).trim();
   const hit = prep.map((p, i) => ({ p, i })).filter(({ p }) => fold(`${p.a.title} ${p.a.location ?? ""}`).includes(q)).slice(0, 40);
   const n = prep.length;

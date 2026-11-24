@@ -175,3 +175,22 @@ test("kundens egen annons med annan text kopplas till mäklarnas annonser på en
   const r = analyzeDuplicates([...pad, own, broker]);
   assert.ok(r.groups.some((g) => g.items.some((i) => i.id === "pb:siemens") && g.items.some((i) => i.id === "pb:unik")));
 });
+
+test("ovanliga ord och orter räknas mot hela listan, inte den filtrerade", () => {
+  // Hela listan: 200 annonser i Stockholm och några i Finspång. Den filtrerade listan (t.ex. på
+  // "PLM") innehåller nästan bara Finspång-annonser, där orten annars ser vanlig ut.
+  const pad = Array.from({ length: 200 }, (_, i) =>
+    a({ id: `p:${i}`, source: `P${i % 5}`, url: `https://p.se/${i}`, title: `Utvecklare ${i} inom område ${i}`, location: "Stockholm" }),
+  );
+  const own = a({ id: "pb:siemens", source: "Platsbanken", company: "Siemens Energy AB", url: "https://pb.se/s", title: "Business Analyst PLM", location: "Finspång" });
+  const broker = a({ id: "pb:unik", source: "Platsbanken", company: "UNIK Resurs", url: "https://pb.se/u", title: "Businees Analyst inom PLM", location: "Finspång" });
+  const other = a({ id: "pb:x", source: "Platsbanken", company: "X", url: "https://pb.se/x", title: "Dokumentadministratör", location: "Finspång" });
+  const filtered = [own, broker, other];
+  const pair = (r: ReturnType<typeof analyzeDuplicates>) => r.groups.flatMap((g) => g.pairs).find((p) => [p.a, p.b].includes("pb:siemens"));
+  const alone = pair(analyzeDuplicates(filtered));
+  const withCorpus = pair(analyzeDuplicates(filtered, [...pad, ...filtered]));
+  assert.ok(alone && withCorpus);
+  assert.ok(!alone.reasons.some((r) => r.includes("ovanlig ort")));
+  assert.ok(withCorpus.reasons.some((r) => r.includes("ovanlig ort")));
+  assert.ok(withCorpus.confidence > alone.confidence);
+});
