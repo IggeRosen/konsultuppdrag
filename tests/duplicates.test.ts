@@ -124,3 +124,18 @@ test("explainDuplicates visar alla par, även under gränsen", () => {
   assert.equal(r.pairs[0].candidate, true);
   assert.ok(r.pairs[0].confidence < 50);
 });
+
+test("orter i samma region räknas inte som olika orter", () => {
+  const p = comparePair(
+    a({ id: "e:1", source: "Ework", url: "https://e.se/1", title: "Senior Program Business Analyst - Custody Knowledge", location: "Solna", start: "2026-12-14" }),
+    a({ id: "m:1", source: "emagine", url: "https://m.se/1", title: "Program Business Analyst (Custody Knowledge)", location: "Stockholm Metropolitan Area" }),
+  );
+  assert.ok(p && p.confidence >= 80, String(p?.confidence));
+  assert.ok(p.reasons.some((r) => r.startsWith("Samma region")));
+  assert.ok(!p.against.some((r) => r.startsWith("Olika orter")));
+  const q = comparePair(
+    a({ id: "x:1", source: "A", url: "https://x.se/1", title: "Business Analyst till HellermannTyton", location: "Stockholms län" }),
+    a({ id: "y:1", source: "B", url: "https://y.se/1", title: "Business Analyst till HellermannTyton", location: "Stockholm" }),
+  );
+  assert.ok(q?.reasons.some((r) => r.startsWith("Samma ort")));
+});

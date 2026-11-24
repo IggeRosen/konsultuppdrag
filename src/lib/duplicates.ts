@@ -16,7 +16,8 @@ import type { Assignment } from "./types.ts";
 //     • beskrivningens likhet (0–35 p): andel gemensamma fyrordsföljder (shingles); saknas
 //       beskrivning på någon sida skalas titelpoängen upp i stället; är texterna under 30 %
 //       lika dras 15 p av (mäklare kopierar oftast kundens text),
-//     • samma ort (+8 p) eller olika orter (−20 p),
+//     • samma ort (+8 p) eller olika orter (−20 p); orter i samma region (t.ex. Solna och
+//       Stockholm) räknas varken som samma eller olika,
 //     • samma startdatum (+5 p), samma sista ansökningsdag (+4 p), startdatum mer än två
 //       veckor isär (−10 p),
 //     • samma källa (−5 p): en källa publicerar sällan samma uppdrag två gånger.
@@ -153,13 +154,33 @@ function normUrl(u: string): string {
   }
 }
 
+const PLACE_STOP = new Set([
+  "eller", "och", "remote", "distans", "hybrid", "sverige", "sweden", "onsite", "plats", "med", "mojlighet",
+  "lan", "kommun", "metropolitan", "area", "region", "omrade", "city", "centrala",
+]);
+
+// Kommuner i samma arbetsmarknadsregion: ett uppdrag i "Solna" och ett i "Stockholm" kan vara
+// samma uppdrag (mäklare anger ort olika noga), så de räknas varken som samma eller olika ort.
+const REGIONS: Record<string, string[]> = {
+  stockholm: ["stockholm", "solna", "sundbyberg", "kista", "jarfalla", "nacka", "sollentuna", "lidingo", "danderyd", "taby", "huddinge", "bromma", "haninge", "botkyrka", "sodertalje", "upplands", "vasby", "akersberga", "tyreso", "varmdo", "arlanda", "sigtuna", "marsta"],
+  goteborg: ["goteborg", "gothenburg", "molndal", "partille", "kungalv", "lerum", "harryda", "torslanda", "landvetter"],
+  malmo: ["malmo", "lund", "burlov", "lomma", "staffanstorp", "svedala", "vellinge"],
+};
+const REGION_OF = new Map(Object.entries(REGIONS).flatMap(([r, ws]) => ws.map((w) => [w, r] as const)));
+
+/** Ortsord: gemener utan diakritiska tecken, "Stockholms län" → "stockholm". */
 function places(loc: string | undefined): Set<string> {
   if (!loc) return new Set();
   return new Set(
     fold(loc)
       .split(/[^a-z]+/)
-      .filter((w) => w.length > 2 && !["eller", "och", "remote", "distans", "hybrid", "sverige", "sweden", "onsite", "plats", "med", "mojlighet"].includes(w)),
+      .map((w) => (w.length > 4 && w.endsWith("s") && REGION_OF.has(w.slice(0, -1)) ? w.slice(0, -1) : w))
+      .filter((w) => w.length > 2 && !PLACE_STOP.has(w)),
   );
+}
+
+function regions(ps: Set<string>): Set<string> {
+  return new Set([...ps].map((w) => REGION_OF.get(w)).filter((r): r is string => !!r));
 }
 
 const pct = (x: number) => `${Math.round(x * 100)} %`;
@@ -257,9 +278,12 @@ function addContext(p: Prepared, q: Prepared, reasons: string[], against: string
   let score = 0;
   if (p.places.size && q.places.size) {
     const common = [...p.places].filter((w) => q.places.has(w));
+    const sameRegion = [...regions(p.places)].some((r) => regions(q.places).has(r));
     if (common.length) {
       score += 8;
       reasons.push(`Samma ort (${x.location})`);
+    } else if (sameRegion) {
+      reasons.push(`Samma region (${x.location} / ${y.location})`);
     } else {
       score -= 20;
       against.push(`Olika orter (${x.location} / ${y.location})`);
@@ -409,7 +433,7 @@ export function analyzeDuplicates(assignments: Assignment[]): DuplicateReport {
 export function explainDuplicates(assignments: Assignment[], query: string) {
   const prep = assignments.map(prepare);
   const q = fold(query).trim();
-  const hit = prep.map((p, i) => ({ p, i })).filter(({ p }) => fold(p.a.title).includes(q)).slice(0, 40);
+  const hit = prep.map((p, i) => ({ p, i })).filter(({ p }) => fold(`${p.a.title} ${p.a.location ?? ""}`).includes(q)).slice(0, 40);
   const n = prep.length;
   const candidates = new Set(candidatePairs(prep).map(([i, j]) => i * n + j));
   const pairs = [];

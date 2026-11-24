@@ -21,7 +21,7 @@ som finns hos flera källor (`src/lib/duplicates.ts`). Par med liknande titel el
   92 % lik beskrivning (kopierad text) och minst 60 % lik titel.
 - **Misstänkt dubblett (50–99 %)**: titelns likhet ger upp till 55 poäng, beskrivningens upp till 35 (saknas
   beskrivning väger titeln för båda, men titlar på högst två ord som "Business Analyst" ger då högst 65 p;
-  under 30 % lik text −15). Samma ort +8, olika orter −20, samma startdatum
+  under 30 % lik text −15). Samma ort +8, olika orter −20 (orter i samma region, t.ex. Solna och Stockholm, räknas som neutrala), samma startdatum
   +5, samma sista ansökningsdag +4, start mer än två veckor isär −10, samma källa −5. Par under 50 % visas inte.
 
 Vyn visar nyckeltal (totalt, unika, säkra och misstänkta dubbletter), ett stapeldiagram över paren per
