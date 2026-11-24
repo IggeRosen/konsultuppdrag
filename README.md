@@ -14,15 +14,21 @@ filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Mark
 
 ## Dubbletter
 
-Fliken **Dubbletter** (och `GET /api/duplicates`) analyserar hela uppdragslistan och visar hur många uppdrag
-som finns hos flera källor (`src/lib/duplicates.ts`). Par med liknande titel eller samma annonslänk jämförs:
+Fliken **Dubbletter** (och `GET /api/duplicates?keywords=…&mode=…`) analyserar samma annonser som listan visar
+(dina nyckelord, inklusive Platsbanken och Brainvilles nyckelordssökning) och visar hur många uppdrag som finns
+hos flera källor (`src/lib/duplicates.ts`, laddas via `src/lib/load.ts`). Par med liknande titel eller samma
+annonslänk jämförs:
 
 - **Säker dubblett**: samma annonslänk; i praktiken samma titel och minst 85 % lik beskrivning; eller minst
   92 % lik beskrivning (kopierad text) och minst 60 % lik titel.
-- **Misstänkt dubblett (50–99 %)**: titelns likhet ger upp till 55 poäng, beskrivningens upp till 35 (saknas
-  beskrivning väger titeln för båda, men titlar på högst två ord som "Business Analyst" ger då högst 65 p;
-  under 30 % lik text −15). Samma ort +8, olika orter −20 (orter i samma region, t.ex. Solna och Stockholm, räknas som neutrala), samma startdatum
-  +5, samma sista ansökningsdag +4, start mer än två veckor isär −10, samma källa −5. Par under 50 % visas inte.
+- **Misstänkt dubblett (50–99 %)**: titelns likhet (medel av ord- och teckenlikhet) ger upp till 55 p, titlar på
+  högst två ord upp till 45. Beskrivningarna ger upp till 35 p: kopierad text (fyrordsföljder) eller omskriven text
+  om samma sak (idf-viktad ordlikhet, där ovanliga ord som "PLM" väger tungt). Saknas beskrivning väger titeln för
+  båda (högst 65 p för korta titlar); helt olika texter −15. Samma ort +8, samma ovanliga ort (under 3 % av
+  annonserna) +18, olika orter −20, orter i samma region (t.ex. Solna och Stockholm) neutrala. Samma startdatum +5,
+  samma sista ansökningsdag +4, start mer än två veckor isär −10, samma källa och samma företag −5. Par under 50 %
+  visas inte.
+- `?explain=ord` visar alla annonser med ordet i titel eller ort och bedömningen av varje par, även under 50 %.
 
 Vyn visar nyckeltal (totalt, unika, säkra och misstänkta dubbletter), ett stapeldiagram över paren per
 säkerhetsintervall, en värmekarta över vilka källor som delar uppdrag och varje dubblettgrupp med motivering

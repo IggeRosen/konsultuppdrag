@@ -194,7 +194,7 @@ export default function Duplicates({
   return (
     <section aria-label="Dubbletter">
       <div className="kpis">
-        <Kpi label="uppdrag totalt" value={report.total} />
+        <Kpi label="uppdrag i listan" value={report.total} note="samma som under Uppdrag" />
         <Kpi label="unika uppdrag" value={report.unique} note={`${share} % av listan är dubbletter`} />
         <Kpi label="säkra dubbletter" value={report.redundantCertain} note="annonser som är kopior av en annan" />
         <Kpi label="misstänkta dubbletter" value={report.redundantSuspected} note="annonser som troligen är kopior" />
@@ -213,11 +213,21 @@ export default function Duplicates({
           lik beskrivning (kopierad text) och minst 60 % lik titel.
         </p>
         <p>
-          Övriga par får en <strong>bedömd sannolikhet</strong> i procent: titelns likhet ger upp till 55 poäng och
-          beskrivningens likhet upp till 35 (saknas beskrivning väger titeln för båda, men korta allmänna titlar som
-          ”Business Analyst” ger då högst 65 poäng; är texterna under 30 % lika dras 15 poäng av). Samma ort ger +8, olika orter −20 (orter i samma region, t.ex. Solna och Stockholm, räknas varken som samma eller olika),
-          samma startdatum +5, samma sista ansökningsdag +4, startdatum mer än två veckor isär −10 och samma källa −5.
-          Par under 50 % visas inte. Datumstämplar och prefix som ”Konsultuppdrag –” tas bort innan titlarna jämförs.
+          Övriga par får en <strong>bedömd sannolikhet</strong> i procent. Titelns likhet ger upp till 55 poäng (korta,
+          allmänna titlar som ”Business Analyst” upp till 45). Beskrivningarnas likhet ger upp till 35: antingen kopierad
+          text eller omskriven text om samma sak, där samma ovanliga ord återkommer (t.ex. ”PLM”, ”Teamcenter”). Saknas
+          beskrivning väger titeln för båda; handlar texterna om helt olika saker dras 15 poäng av.
+        </p>
+        <p>
+          Samma ort ger +8 och samma <em>ovanliga</em> ort (under 3 % av annonserna, t.ex. Finspång) +18. Olika orter
+          ger −20, men orter i samma region (t.ex. Solna och Stockholm) räknas varken som samma eller olika. Samma
+          startdatum ger +5, samma sista ansökningsdag +4 och startdatum mer än två veckor isär −10. Samma källa och samma
+          företag ger −5. Par under 50 % visas inte. Datumstämplar och prefix som ”Konsultuppdrag –” tas bort innan
+          titlarna jämförs.
+        </p>
+        <p>
+          Analysen gäller samma annonser som listan under Uppdrag, alltså de som matchar dina nyckelord, inklusive
+          Platsbanken och Brainvilles sökning.
         </p>
         <p>
           Antalet dubbletter räknas som hur många annonser listan hade haft färre om varje uppdrag bara fanns en gång.

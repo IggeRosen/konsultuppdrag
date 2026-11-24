@@ -10,17 +10,17 @@ import type { Assignment } from "./types.ts";
 //     • beskrivningen är minst 92 % lik (kopierad text) OCH titeln minst 60 % lik.
 //
 //   MISSTÄNKT dubblett (50–99 %) annars, med en sannolikhet som byggs upp av poäng:
-//     • titelns likhet (0–55 p): ord- och teckenlikhet, datum och "Konsultuppdrag –" bortrensade;
-//       korta, allmänna titlar (högst två ord, t.ex. "Business Analyst") ger högst 65 p när
-//       beskrivning saknas, längre titlar 90 p,
-//     • beskrivningens likhet (0–35 p): andel gemensamma fyrordsföljder (shingles); saknas
-//       beskrivning på någon sida skalas titelpoängen upp i stället; är texterna under 30 %
-//       lika dras 15 p av (mäklare kopierar oftast kundens text),
-//     • samma ort (+8 p) eller olika orter (−20 p); orter i samma region (t.ex. Solna och
-//       Stockholm) räknas varken som samma eller olika,
+//     • titelns likhet (0–55 p, korta allmänna titlar på högst två ord 0–45 p): medel av ord- och
+//       teckenlikhet, datum och "Konsultuppdrag –" bortrensade,
+//     • beskrivningarnas likhet (0–35 p): det högsta av kopierad text (fyrordsföljder) och
+//       omskriven text om samma sak (idf-viktad ordlikhet × 0,85, där ovanliga ord som "PLM" och
+//       "Teamcenter" väger tungt); saknas beskrivning väger titeln för båda (högst 65 p för korta
+//       titlar, annars 90 p); texter under 20 % lika −15 p,
+//     • samma ort (+8 p, +18 p om orten finns i under 3 % av annonserna, t.ex. Finspång) eller
+//       olika orter (−20 p); orter i samma region (t.ex. Solna och Stockholm) är neutrala,
 //     • samma startdatum (+5 p), samma sista ansökningsdag (+4 p), startdatum mer än två
 //       veckor isär (−10 p),
-//     • samma källa (−5 p): en källa publicerar sällan samma uppdrag två gånger.
+//     • samma källa och samma företag (−5 p): Platsbanken samlar annonser från många företag.
 //   Summan begränsas till 0–99 %. Par under MIN_CONFIDENCE (50 %) redovisas inte.
 //
 // Grupper bildas av alla par över gränsen (ett uppdrag kan finnas hos tre mäklare).
@@ -113,13 +113,17 @@ function bigrams(s: string): Set<string> {
   return out;
 }
 
-/** Titellikhet 0–1: det högsta av ordlikhet och teckenlikhet. */
+/**
+ * Titellikhet 0–1: medel av ordlikhet och teckenlikhet. Teckenlikheten fångar stavfel och
+ * sammansättningar ("Java-utvecklare"/"Javautvecklare"), ordlikheten hindrar att ett gemensamt
+ * långt ord ("…till gasturbintillverkare") ensamt gör två olika roller lika.
+ */
 export function titleSimilarity(a: string, b: string): number {
   const na = normalizeTitle(a);
   const nb = normalizeTitle(b);
   if (!na || !nb) return 0;
   if (na === nb) return 1;
-  return Math.max(dice(new Set(titleTokens(a)), new Set(titleTokens(b))), dice(bigrams(na), bigrams(nb)));
+  return (dice(new Set(titleTokens(a)), new Set(titleTokens(b))) + dice(bigrams(na), bigrams(nb))) / 2;
 }
 
 /** Fyrordsföljder i beskrivningen (null om texten är för kort för att jämföras). */
@@ -134,6 +138,60 @@ export function shingles(text: string | undefined): Set<string> | null {
   const out = new Set<string>();
   for (let i = 0; i + 4 <= words.length; i++) out.add(words.slice(i, i + 4).join(" "));
   return out;
+}
+
+const TEXT_STOP = new Set(
+  ("att det som har vara kan ska eller inom den denna detta dessa fran the and you will with our are your vi du dig din ditt " +
+    "oss var vara vart vill nu ocksa samt mycket god goda bra bade inte alla ett en och i pa till for med av om ar ha hos " +
+    "this that for from have has who can all their they them its about as be by is it of on or to we an at in not more " +
+    "ansokan ansok soka sok soker anstallningsform yrke erfarenhet arbete arbeta arbetar kund kunden kunder uppdrag uppdraget " +
+    "roll rollen tjanst tjansten foretag foretaget team teamet work experience role").split(" "),
+);
+
+/** Innehållsord i beskrivningen med antal förekomster. */
+export function contentWords(text: string | undefined): Map<string, number> | null {
+  if (!text) return null;
+  const words = fold(text)
+    .replace(/[^a-z0-9#+]+/g, " ")
+    .split(" ")
+    .filter((w) => w.length > 2 && !TEXT_STOP.has(w) && !/^\d+$/.test(w))
+    .slice(0, 600);
+  if (words.length < 15) return null;
+  const tf = new Map<string, number>();
+  for (const w of words) tf.set(w, (tf.get(w) ?? 0) + 1);
+  return tf;
+}
+
+/**
+ * Ämneslikhet 0–1 (cosinus med idf-vikter): fångar omskrivna annonser om samma uppdrag, där
+ * ovanliga ord som "PLM", "Teamcenter" och "Finspång" återkommer fast meningarna skiljer sig.
+ * Returnerar även de tyngsta gemensamma orden som förklaring.
+ */
+export function topicSimilarity(
+  a: Map<string, number> | null,
+  b: Map<string, number> | null,
+  idf: (w: string) => number = () => 1,
+): { sim: number; shared: string[] } | null {
+  if (!a || !b) return null;
+  const weight = (tf: number, w: string) => (1 + Math.log(tf)) * idf(w);
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  const shared: [string, number][] = [];
+  for (const [w, tf] of a) {
+    const x = weight(tf, w);
+    na += x * x;
+    const tb = b.get(w);
+    if (tb) {
+      const y = weight(tb, w);
+      dot += x * y;
+      shared.push([w, x * y]);
+    }
+  }
+  for (const [w, tf] of b) nb += weight(tf, w) ** 2;
+  if (!na || !nb) return null;
+  shared.sort((p, q) => q[1] - p[1]);
+  return { sim: dot / Math.sqrt(na * nb), shared: shared.slice(0, 4).map(([w]) => w) };
 }
 
 /** Likhet 0–1 mellan två shingle-mängder (andel av den mindre mängden som återfinns i den större). */
@@ -195,8 +253,32 @@ interface Prepared {
   tokenSet: Set<string>;
   grams: Set<string>;
   sh: Set<string> | null;
+  words: Map<string, number> | null;
   url: string;
   places: Set<string>;
+}
+
+/** Statistik över hela listan: hur vanliga ord och orter är. */
+interface Context {
+  idf: (w: string) => number;
+  /** Andel av annonserna med orten (0–1). */
+  placeShare: (w: string) => number;
+}
+
+const NO_CONTEXT: Context = { idf: () => 1, placeShare: () => 1 };
+
+function buildContext(prep: Prepared[]): Context {
+  const df = new Map<string, number>();
+  const pf = new Map<string, number>();
+  for (const p of prep) {
+    for (const w of p.words?.keys() ?? []) df.set(w, (df.get(w) ?? 0) + 1);
+    for (const w of p.places) pf.set(w, (pf.get(w) ?? 0) + 1);
+  }
+  const n = Math.max(1, prep.length);
+  return {
+    idf: (w) => Math.log((n + 1) / ((df.get(w) ?? 0) + 1)) + 1,
+    placeShare: (w) => (pf.get(w) ?? 0) / n,
+  };
 }
 
 function prepare(a: Assignment): Prepared {
@@ -209,6 +291,7 @@ function prepare(a: Assignment): Prepared {
     tokenSet: new Set(tokens),
     grams: bigrams(norm),
     sh: shingles(a.description),
+    words: contentWords(a.description),
     url: normUrl(a.url),
     places: places(a.location),
   };
@@ -218,15 +301,15 @@ function prepare(a: Assignment): Prepared {
 function preparedTitleSimilarity(p: Prepared, q: Prepared): number {
   if (!p.norm || !q.norm) return 0;
   if (p.norm === q.norm) return 1;
-  return Math.max(dice(p.tokenSet, q.tokenSet), dice(p.grams, q.grams));
+  return (dice(p.tokenSet, q.tokenSet) + dice(p.grams, q.grams)) / 2;
 }
 
 /** Bedömer om två uppdrag är samma uppdrag. Returnerar null under MIN_CONFIDENCE. */
 export function comparePair(x: Assignment, y: Assignment): DuplicatePair | null {
-  return compareInner(prepare(x), prepare(y));
+  return compareInner(prepare(x), prepare(y), NO_CONTEXT);
 }
 
-function compareInner(p: Prepared, q: Prepared, keepAll = false): DuplicatePair | null {
+function compareInner(p: Prepared, q: Prepared, ctx: Context, keepAll = false): DuplicatePair | null {
   const x = p.a;
   const y = q.a;
   const reasons: string[] = [];
@@ -242,28 +325,35 @@ function compareInner(p: Prepared, q: Prepared, keepAll = false): DuplicatePair 
   // Så olika titlar är olika uppdrag; hoppa över den dyrare textjämförelsen.
   if (tSim < 0.3 && !keepAll) return null;
   const dSim = textSimilarity(p.sh, q.sh);
+  const topic = topicSimilarity(p.words, q.words, ctx.idf);
+  // Texten räknas som lik om den är kopierad (dSim) eller handlar om samma sak med samma
+  // ovanliga ord fast omskriven (topic, något nedviktad).
+  const text = dSim === null && !topic ? null : Math.max(dSim ?? 0, (topic?.sim ?? 0) * 0.85);
   if (tSim >= 0.95) reasons.push("Samma titel");
   else if (tSim >= 0.5) reasons.push(`Titeln ${pct(tSim)} lik`);
   else against.push(`Titeln bara ${pct(tSim)} lik`);
-  if (dSim !== null) {
-    if (dSim >= 0.5) reasons.push(`Beskrivningen ${pct(dSim)} lik${dSim >= 0.85 ? " (samma text)" : ""}`);
-    else against.push(`Beskrivningen bara ${pct(dSim)} lik`);
+  if (text !== null) {
+    if (dSim !== null && dSim >= 0.5) reasons.push(`Beskrivningen ${pct(dSim)} lik${dSim >= 0.85 ? " (samma text)" : ""}`);
+    else if (text >= 0.3) reasons.push(`Beskrivningarna handlar om samma sak (${pct(text)}${topic?.shared.length ? `: ${topic.shared.join(", ")}` : ""})`);
+    else against.push(`Beskrivningarna olika (${pct(text)} lika)`);
   }
 
   if ((tSim >= 0.95 && dSim !== null && dSim >= 0.85) || (dSim !== null && dSim >= 0.92 && tSim >= 0.6)) {
-    addContext(p, q, reasons, against);
+    addContext(p, q, ctx, reasons, against);
     return pair(100, true);
   }
 
   // Titel 0–55 p, beskrivning 0–35 p (saknas den räknas titeln för båda).
-  // Korta, allmänna titlar ("Business Analyst") säger lite om vilket uppdrag det är, så utan
-  // beskrivning att jämföra väger de mindre än längre titlar.
+  // Korta, allmänna titlar ("Business Analyst") säger lite om vilket uppdrag det är och väger
+  // mindre än längre titlar.
   const generic = Math.min(p.tokens.length, q.tokens.length) <= 2;
-  let score = dSim === null ? tSim * (generic ? 65 : 90) : tSim * 55 + dSim * 35;
-  // Mäklare kopierar oftast kundens text, så helt olika beskrivningar talar emot.
-  if (dSim !== null && dSim < 0.3) score -= 15;
-  score += addContext(p, q, reasons, against);
-  if (x.source === y.source) {
+  let score = text === null ? tSim * (generic ? 65 : 90) : tSim * (generic ? 45 : 55) + text * 35;
+  // Texter som handlar om helt olika saker talar emot.
+  if (text !== null && text < 0.2) score -= 15;
+  score += addContext(p, q, ctx, reasons, against);
+  // En källa publicerar sällan samma uppdrag två gånger, men Platsbanken m.fl. samlar annonser
+  // från många företag: bara samma källa OCH samma företag talar emot.
+  if (x.source === y.source && (x.company ?? "") === (y.company ?? "")) {
     score -= 5;
     against.push("Samma källa");
   }
@@ -272,7 +362,7 @@ function compareInner(p: Prepared, q: Prepared, keepAll = false): DuplicatePair 
 }
 
 /** Ort och datum: lägger till skäl och returnerar poäng. */
-function addContext(p: Prepared, q: Prepared, reasons: string[], against: string[]): number {
+function addContext(p: Prepared, q: Prepared, ctx: Context, reasons: string[], against: string[]): number {
   const x = p.a;
   const y = q.a;
   let score = 0;
@@ -280,8 +370,10 @@ function addContext(p: Prepared, q: Prepared, reasons: string[], against: string
     const common = [...p.places].filter((w) => q.places.has(w));
     const sameRegion = [...regions(p.places)].some((r) => regions(q.places).has(r));
     if (common.length) {
-      score += 8;
-      reasons.push(`Samma ort (${x.location})`);
+      // Samma mindre ort (t.ex. Finspång) säger mer än samma storstad.
+      const rare = common.some((w) => ctx.placeShare(w) < 0.03);
+      score += rare ? 18 : 8;
+      reasons.push(`Samma ort (${x.location}${rare ? ", ovanlig ort" : ""})`);
     } else if (sameRegion) {
       reasons.push(`Samma region (${x.location} / ${y.location})`);
     } else {
@@ -365,9 +457,10 @@ const BUCKETS = [
 
 export function analyzeDuplicates(assignments: Assignment[]): DuplicateReport {
   const prep = assignments.map(prepare);
+  const ctx = buildContext(prep);
   const pairs: { i: number; j: number; p: DuplicatePair }[] = [];
   for (const [i, j] of candidatePairs(prep)) {
-    const p = compareInner(prep[i], prep[j]);
+    const p = compareInner(prep[i], prep[j], ctx);
     if (p) pairs.push({ i, j, p });
   }
 
@@ -432,6 +525,7 @@ export function analyzeDuplicates(assignments: Assignment[]): DuplicateReport {
  */
 export function explainDuplicates(assignments: Assignment[], query: string) {
   const prep = assignments.map(prepare);
+  const ctx = buildContext(prep);
   const q = fold(query).trim();
   const hit = prep.map((p, i) => ({ p, i })).filter(({ p }) => fold(`${p.a.title} ${p.a.location ?? ""}`).includes(q)).slice(0, 40);
   const n = prep.length;
@@ -440,7 +534,7 @@ export function explainDuplicates(assignments: Assignment[], query: string) {
   for (let m = 0; m < hit.length; m++) {
     for (let k = m + 1; k < hit.length; k++) {
       const [i, j] = [hit[m].i, hit[k].i].sort((a, b) => a - b);
-      const r = compareInner(prep[i], prep[j], true)!;
+      const r = compareInner(prep[i], prep[j], ctx, true)!;
       pairs.push({ a: prep[i].a.id, b: prep[j].a.id, candidate: candidates.has(i * n + j), confidence: r.confidence, certain: r.certain, reasons: r.reasons, against: r.against });
     }
   }
