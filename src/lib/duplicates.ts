@@ -205,7 +205,7 @@ export function comparePair(x: Assignment, y: Assignment): DuplicatePair | null 
   return compareInner(prepare(x), prepare(y));
 }
 
-function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
+function compareInner(p: Prepared, q: Prepared, keepAll = false): DuplicatePair | null {
   const x = p.a;
   const y = q.a;
   const reasons: string[] = [];
@@ -219,7 +219,7 @@ function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
 
   const tSim = preparedTitleSimilarity(p, q);
   // Så olika titlar är olika uppdrag; hoppa över den dyrare textjämförelsen.
-  if (tSim < 0.3) return null;
+  if (tSim < 0.3 && !keepAll) return null;
   const dSim = textSimilarity(p.sh, q.sh);
   if (tSim >= 0.95) reasons.push("Samma titel");
   else if (tSim >= 0.5) reasons.push(`Titeln ${pct(tSim)} lik`);
@@ -247,7 +247,7 @@ function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
     against.push("Samma källa");
   }
   const confidence = Math.max(0, Math.min(99, Math.round(score)));
-  return confidence >= MIN_CONFIDENCE ? pair(confidence, false) : null;
+  return confidence >= MIN_CONFIDENCE || keepAll ? pair(confidence, false) : null;
 }
 
 /** Ort och datum: lägger till skäl och returnerar poäng. */
@@ -399,5 +399,41 @@ export function analyzeDuplicates(assignments: Assignment[]): DuplicateReport {
     groups,
     buckets: BUCKETS.map((b) => ({ ...b, count: pairs.filter(({ p }) => p.confidence >= b.min && p.confidence <= b.max).length })),
     overlap: { sources, matrix },
+  };
+}
+
+/**
+ * Felsökning: alla uppdrag vars titel innehåller `query` och bedömningen av varje par mellan
+ * dem, även under MIN_CONFIDENCE, samt om paret alls valdes ut för jämförelse.
+ */
+export function explainDuplicates(assignments: Assignment[], query: string) {
+  const prep = assignments.map(prepare);
+  const q = fold(query).trim();
+  const hit = prep.map((p, i) => ({ p, i })).filter(({ p }) => fold(p.a.title).includes(q)).slice(0, 40);
+  const n = prep.length;
+  const candidates = new Set(candidatePairs(prep).map(([i, j]) => i * n + j));
+  const pairs = [];
+  for (let m = 0; m < hit.length; m++) {
+    for (let k = m + 1; k < hit.length; k++) {
+      const [i, j] = [hit[m].i, hit[k].i].sort((a, b) => a - b);
+      const r = compareInner(prep[i], prep[j], true)!;
+      pairs.push({ a: prep[i].a.id, b: prep[j].a.id, candidate: candidates.has(i * n + j), confidence: r.confidence, certain: r.certain, reasons: r.reasons, against: r.against });
+    }
+  }
+  return {
+    query,
+    items: hit.map(({ p }) => ({
+      id: p.a.id,
+      source: p.a.source,
+      title: p.a.title,
+      normalized: p.norm,
+      tokens: p.tokens,
+      location: p.a.location,
+      start: p.a.start,
+      deadline: p.a.deadline,
+      descriptionWords: p.a.description?.split(/\s+/).length ?? 0,
+      comparableText: !!p.sh,
+    })),
+    pairs: pairs.sort((x, y) => y.confidence - x.confidence),
   };
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyzeDuplicates, comparePair, normalizeTitle, titleSimilarity } from "../src/lib/duplicates.ts";
+import { analyzeDuplicates, comparePair, explainDuplicates, normalizeTitle, titleSimilarity } from "../src/lib/duplicates.ts";
 import type { Assignment } from "../src/lib/types.ts";
 
 const LOREM =
@@ -110,4 +110,17 @@ test("korta, allmänna titlar utan beskrivning ger bara måttlig misstanke", () 
     a({ id: "b:h", source: "B", url: "https://b.se/h", title: "Business Analyst", location: "Luleå" }),
   );
   assert.equal(otherCity, null);
+});
+
+test("explainDuplicates visar alla par, även under gränsen", () => {
+  const list = [
+    a({ id: "a:1", source: "A", url: "https://a.se/1", title: "Business Analyst", location: "Malmö" }),
+    a({ id: "b:1", source: "B", url: "https://b.se/1", title: "Business Analyst Finspång", location: "Luleå" }),
+    a({ id: "c:1", source: "C", url: "https://c.se/1", title: "Testledare" }),
+  ];
+  const r = explainDuplicates(list, "business analyst");
+  assert.equal(r.items.length, 2);
+  assert.equal(r.pairs.length, 1);
+  assert.equal(r.pairs[0].candidate, true);
+  assert.ok(r.pairs[0].confidence < 50);
 });
