@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyzeDuplicates, comparePair, normalizeTitle, titleSimilarity } from "../src/lib/duplicates.ts";
+import { analyzeDuplicates, comparePair, explainDuplicates, normalizeTitle, titleSimilarity } from "../src/lib/duplicates.ts";
 import type { Assignment } from "../src/lib/types.ts";
 
 const LOREM =
@@ -81,4 +81,61 @@ test("analyzeDuplicates grupperar och räknar överflödiga uppdrag", () => {
   assert.deepEqual(r.overlap.sources, ["A", "B", "C"]);
   assert.equal(r.overlap.matrix[0][1], 1);
   assert.equal(r.buckets.find((b) => b.label === "Säker")?.count, 1);
+});
+
+test("vanliga titelord som 'Business Analyst' utesluter inte paret från jämförelse", () => {
+  // Fler än 5 % av annonserna innehåller "business" eller "analyst", så orden räknas som vanliga.
+  const filler = Array.from({ length: 80 }, (_, i) =>
+    a({ id: `f:${i}`, source: "F", url: `https://f.se/${i}`, title: i % 2 ? `Business Controller ${i}` : `Data Analyst nivå ${i}`, description: `Egen text nummer ${i} `.repeat(20) }),
+  );
+  const list = [
+    ...filler,
+    a({ id: "a:ba", source: "A", url: "https://a.se/ba", title: "Business Analyst", description: LOREM, location: "Stockholm" }),
+    a({ id: "b:ba", source: "B", url: "https://b.se/ba", title: "Business Analyst – Region Stockholm", description: LOREM, location: "Stockholm" }),
+  ];
+  const r = analyzeDuplicates(list);
+  const g = r.groups.find((x) => x.items.some((i) => i.id === "a:ba"));
+  assert.ok(g, "Business Analyst-paret ska hittas");
+  assert.deepEqual(g.items.map((i) => i.id).sort(), ["a:ba", "b:ba"]);
+});
+
+test("korta, allmänna titlar utan beskrivning ger bara måttlig misstanke", () => {
+  const same = comparePair(
+    a({ id: "a:g", source: "A", url: "https://a.se/g", title: "Business Analyst", location: "Stockholm" }),
+    a({ id: "b:g", source: "B", url: "https://b.se/g", title: "Business Analyst", location: "Stockholm" }),
+  );
+  assert.ok(same && !same.certain && same.confidence < 80, String(same?.confidence));
+  const otherCity = comparePair(
+    a({ id: "a:h", source: "A", url: "https://a.se/h", title: "Business Analyst", location: "Malmö" }),
+    a({ id: "b:h", source: "B", url: "https://b.se/h", title: "Business Analyst", location: "Luleå" }),
+  );
+  assert.equal(otherCity, null);
+});
+
+test("explainDuplicates visar alla par, även under gränsen", () => {
+  const list = [
+    a({ id: "a:1", source: "A", url: "https://a.se/1", title: "Business Analyst", location: "Malmö" }),
+    a({ id: "b:1", source: "B", url: "https://b.se/1", title: "Business Analyst Finspång", location: "Luleå" }),
+    a({ id: "c:1", source: "C", url: "https://c.se/1", title: "Testledare" }),
+  ];
+  const r = explainDuplicates(list, "business analyst");
+  assert.equal(r.items.length, 2);
+  assert.equal(r.pairs.length, 1);
+  assert.equal(r.pairs[0].candidate, true);
+  assert.ok(r.pairs[0].confidence < 50);
+});
+
+test("orter i samma region räknas inte som olika orter", () => {
+  const p = comparePair(
+    a({ id: "e:1", source: "Ework", url: "https://e.se/1", title: "Senior Program Business Analyst - Custody Knowledge", location: "Solna", start: "2026-12-14" }),
+    a({ id: "m:1", source: "emagine", url: "https://m.se/1", title: "Program Business Analyst (Custody Knowledge)", location: "Stockholm Metropolitan Area" }),
+  );
+  assert.ok(p && p.confidence >= 80, String(p?.confidence));
+  assert.ok(p.reasons.some((r) => r.startsWith("Samma region")));
+  assert.ok(!p.against.some((r) => r.startsWith("Olika orter")));
+  const q = comparePair(
+    a({ id: "x:1", source: "A", url: "https://x.se/1", title: "Business Analyst till HellermannTyton", location: "Stockholms län" }),
+    a({ id: "y:1", source: "B", url: "https://y.se/1", title: "Business Analyst till HellermannTyton", location: "Stockholm" }),
+  );
+  assert.ok(q?.reasons.some((r) => r.startsWith("Samma ort")));
 });

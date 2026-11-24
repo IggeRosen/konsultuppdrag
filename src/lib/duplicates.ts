@@ -10,11 +10,14 @@ import type { Assignment } from "./types.ts";
 //     • beskrivningen är minst 92 % lik (kopierad text) OCH titeln minst 60 % lik.
 //
 //   MISSTÄNKT dubblett (50–99 %) annars, med en sannolikhet som byggs upp av poäng:
-//     • titelns likhet (0–55 p): ord- och teckenlikhet, datum och "Konsultuppdrag –" bortrensade,
+//     • titelns likhet (0–55 p): ord- och teckenlikhet, datum och "Konsultuppdrag –" bortrensade;
+//       korta, allmänna titlar (högst två ord, t.ex. "Business Analyst") ger högst 65 p när
+//       beskrivning saknas, längre titlar 90 p,
 //     • beskrivningens likhet (0–35 p): andel gemensamma fyrordsföljder (shingles); saknas
 //       beskrivning på någon sida skalas titelpoängen upp i stället; är texterna under 30 %
 //       lika dras 15 p av (mäklare kopierar oftast kundens text),
-//     • samma ort (+8 p) eller olika orter (−20 p),
+//     • samma ort (+8 p) eller olika orter (−20 p); orter i samma region (t.ex. Solna och
+//       Stockholm) räknas varken som samma eller olika,
 //     • samma startdatum (+5 p), samma sista ansökningsdag (+4 p), startdatum mer än två
 //       veckor isär (−10 p),
 //     • samma källa (−5 p): en källa publicerar sällan samma uppdrag två gånger.
@@ -151,13 +154,33 @@ function normUrl(u: string): string {
   }
 }
 
+const PLACE_STOP = new Set([
+  "eller", "och", "remote", "distans", "hybrid", "sverige", "sweden", "onsite", "plats", "med", "mojlighet",
+  "lan", "kommun", "metropolitan", "area", "region", "omrade", "city", "centrala",
+]);
+
+// Kommuner i samma arbetsmarknadsregion: ett uppdrag i "Solna" och ett i "Stockholm" kan vara
+// samma uppdrag (mäklare anger ort olika noga), så de räknas varken som samma eller olika ort.
+const REGIONS: Record<string, string[]> = {
+  stockholm: ["stockholm", "solna", "sundbyberg", "kista", "jarfalla", "nacka", "sollentuna", "lidingo", "danderyd", "taby", "huddinge", "bromma", "haninge", "botkyrka", "sodertalje", "upplands", "vasby", "akersberga", "tyreso", "varmdo", "arlanda", "sigtuna", "marsta"],
+  goteborg: ["goteborg", "gothenburg", "molndal", "partille", "kungalv", "lerum", "harryda", "torslanda", "landvetter"],
+  malmo: ["malmo", "lund", "burlov", "lomma", "staffanstorp", "svedala", "vellinge"],
+};
+const REGION_OF = new Map(Object.entries(REGIONS).flatMap(([r, ws]) => ws.map((w) => [w, r] as const)));
+
+/** Ortsord: gemener utan diakritiska tecken, "Stockholms län" → "stockholm". */
 function places(loc: string | undefined): Set<string> {
   if (!loc) return new Set();
   return new Set(
     fold(loc)
       .split(/[^a-z]+/)
-      .filter((w) => w.length > 2 && !["eller", "och", "remote", "distans", "hybrid", "sverige", "sweden", "onsite", "plats", "med", "mojlighet"].includes(w)),
+      .map((w) => (w.length > 4 && w.endsWith("s") && REGION_OF.has(w.slice(0, -1)) ? w.slice(0, -1) : w))
+      .filter((w) => w.length > 2 && !PLACE_STOP.has(w)),
   );
+}
+
+function regions(ps: Set<string>): Set<string> {
+  return new Set([...ps].map((w) => REGION_OF.get(w)).filter((r): r is string => !!r));
 }
 
 const pct = (x: number) => `${Math.round(x * 100)} %`;
@@ -167,14 +190,35 @@ const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(
 
 interface Prepared {
   a: Assignment;
+  norm: string;
   tokens: string[];
+  tokenSet: Set<string>;
+  grams: Set<string>;
   sh: Set<string> | null;
   url: string;
   places: Set<string>;
 }
 
 function prepare(a: Assignment): Prepared {
-  return { a, tokens: titleTokens(a.title), sh: shingles(a.description), url: normUrl(a.url), places: places(a.location) };
+  const norm = normalizeTitle(a.title);
+  const tokens = titleTokens(a.title);
+  return {
+    a,
+    norm,
+    tokens,
+    tokenSet: new Set(tokens),
+    grams: bigrams(norm),
+    sh: shingles(a.description),
+    url: normUrl(a.url),
+    places: places(a.location),
+  };
+}
+
+/** Samma som titleSimilarity men med förberäknade delar. */
+function preparedTitleSimilarity(p: Prepared, q: Prepared): number {
+  if (!p.norm || !q.norm) return 0;
+  if (p.norm === q.norm) return 1;
+  return Math.max(dice(p.tokenSet, q.tokenSet), dice(p.grams, q.grams));
 }
 
 /** Bedömer om två uppdrag är samma uppdrag. Returnerar null under MIN_CONFIDENCE. */
@@ -182,7 +226,7 @@ export function comparePair(x: Assignment, y: Assignment): DuplicatePair | null 
   return compareInner(prepare(x), prepare(y));
 }
 
-function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
+function compareInner(p: Prepared, q: Prepared, keepAll = false): DuplicatePair | null {
   const x = p.a;
   const y = q.a;
   const reasons: string[] = [];
@@ -194,7 +238,9 @@ function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
     return pair(100, true);
   }
 
-  const tSim = titleSimilarity(x.title, y.title);
+  const tSim = preparedTitleSimilarity(p, q);
+  // Så olika titlar är olika uppdrag; hoppa över den dyrare textjämförelsen.
+  if (tSim < 0.3 && !keepAll) return null;
   const dSim = textSimilarity(p.sh, q.sh);
   if (tSim >= 0.95) reasons.push("Samma titel");
   else if (tSim >= 0.5) reasons.push(`Titeln ${pct(tSim)} lik`);
@@ -210,7 +256,10 @@ function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
   }
 
   // Titel 0–55 p, beskrivning 0–35 p (saknas den räknas titeln för båda).
-  let score = dSim === null ? tSim * 90 : tSim * 55 + dSim * 35;
+  // Korta, allmänna titlar ("Business Analyst") säger lite om vilket uppdrag det är, så utan
+  // beskrivning att jämföra väger de mindre än längre titlar.
+  const generic = Math.min(p.tokens.length, q.tokens.length) <= 2;
+  let score = dSim === null ? tSim * (generic ? 65 : 90) : tSim * 55 + dSim * 35;
   // Mäklare kopierar oftast kundens text, så helt olika beskrivningar talar emot.
   if (dSim !== null && dSim < 0.3) score -= 15;
   score += addContext(p, q, reasons, against);
@@ -219,7 +268,7 @@ function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
     against.push("Samma källa");
   }
   const confidence = Math.max(0, Math.min(99, Math.round(score)));
-  return confidence >= MIN_CONFIDENCE ? pair(confidence, false) : null;
+  return confidence >= MIN_CONFIDENCE || keepAll ? pair(confidence, false) : null;
 }
 
 /** Ort och datum: lägger till skäl och returnerar poäng. */
@@ -229,9 +278,12 @@ function addContext(p: Prepared, q: Prepared, reasons: string[], against: string
   let score = 0;
   if (p.places.size && q.places.size) {
     const common = [...p.places].filter((w) => q.places.has(w));
+    const sameRegion = [...regions(p.places)].some((r) => regions(q.places).has(r));
     if (common.length) {
       score += 8;
       reasons.push(`Samma ort (${x.location})`);
+    } else if (sameRegion) {
+      reasons.push(`Samma region (${x.location} / ${y.location})`);
     } else {
       score -= 20;
       against.push(`Olika orter (${x.location} / ${y.location})`);
@@ -263,22 +315,29 @@ function candidatePairs(prep: Prepared[]): [number, number][] {
     for (const t of p.tokens) (byToken.get(t) ?? byToken.set(t, []).get(t)!).push(i);
     (byUrl.get(p.url) ?? byUrl.set(p.url, []).get(p.url)!).push(i);
   });
-  // Mycket vanliga ord ("senior", "utvecklare") ger för många kandidater och säger lite.
-  const maxPosting = Math.max(40, Math.round(prep.length * 0.05));
-  const shared = new Map<string, number>();
-  const key = (i: number, j: number) => (i < j ? `${i},${j}` : `${j},${i}`);
+  // Bara extremt vanliga ord hoppas över (de ger för många kandidater). Vanliga ord som
+  // "business" och "analyst" måste vara med, annars jämförs aldrig "Business Analyst"-annonser.
+  const maxPosting = Math.max(400, Math.round(prep.length * 0.3));
+  const n = prep.length;
+  const shared = new Map<number, number>();
   for (const ids of byToken.values()) {
     if (ids.length < 2 || ids.length > maxPosting) continue;
-    for (let m = 0; m < ids.length; m++) for (let n = m + 1; n < ids.length; n++) shared.set(key(ids[m], ids[n]), (shared.get(key(ids[m], ids[n])) ?? 0) + 1);
+    for (let m = 0; m < ids.length; m++) {
+      for (let k = m + 1; k < ids.length; k++) {
+        const key = ids[m] * n + ids[k];
+        shared.set(key, (shared.get(key) ?? 0) + 1);
+      }
+    }
   }
-  const out = new Set<string>();
-  for (const [k, n] of shared) {
-    const [i, j] = k.split(",").map(Number);
+  const out = new Set<number>();
+  for (const [key, count] of shared) {
+    const i = Math.floor(key / n);
+    const j = key % n;
     const fewTokens = Math.min(prep[i].tokens.length, prep[j].tokens.length) <= 2;
-    if (n >= 2 || (fewTokens && n >= 1)) out.add(k);
+    if (count >= 2 || (fewTokens && count >= 1)) out.add(key);
   }
-  for (const ids of byUrl.values()) for (let m = 0; m < ids.length; m++) for (let n = m + 1; n < ids.length; n++) out.add(key(ids[m], ids[n]));
-  return [...out].map((k) => k.split(",").map(Number) as [number, number]);
+  for (const ids of byUrl.values()) for (let m = 0; m < ids.length; m++) for (let k = m + 1; k < ids.length; k++) out.add(ids[m] * n + ids[k]);
+  return [...out].map((key) => [Math.floor(key / n), key % n] as [number, number]);
 }
 
 class UnionFind {
@@ -364,5 +423,41 @@ export function analyzeDuplicates(assignments: Assignment[]): DuplicateReport {
     groups,
     buckets: BUCKETS.map((b) => ({ ...b, count: pairs.filter(({ p }) => p.confidence >= b.min && p.confidence <= b.max).length })),
     overlap: { sources, matrix },
+  };
+}
+
+/**
+ * Felsökning: alla uppdrag vars titel innehåller `query` och bedömningen av varje par mellan
+ * dem, även under MIN_CONFIDENCE, samt om paret alls valdes ut för jämförelse.
+ */
+export function explainDuplicates(assignments: Assignment[], query: string) {
+  const prep = assignments.map(prepare);
+  const q = fold(query).trim();
+  const hit = prep.map((p, i) => ({ p, i })).filter(({ p }) => fold(`${p.a.title} ${p.a.location ?? ""}`).includes(q)).slice(0, 40);
+  const n = prep.length;
+  const candidates = new Set(candidatePairs(prep).map(([i, j]) => i * n + j));
+  const pairs = [];
+  for (let m = 0; m < hit.length; m++) {
+    for (let k = m + 1; k < hit.length; k++) {
+      const [i, j] = [hit[m].i, hit[k].i].sort((a, b) => a - b);
+      const r = compareInner(prep[i], prep[j], true)!;
+      pairs.push({ a: prep[i].a.id, b: prep[j].a.id, candidate: candidates.has(i * n + j), confidence: r.confidence, certain: r.certain, reasons: r.reasons, against: r.against });
+    }
+  }
+  return {
+    query,
+    items: hit.map(({ p }) => ({
+      id: p.a.id,
+      source: p.a.source,
+      title: p.a.title,
+      normalized: p.norm,
+      tokens: p.tokens,
+      location: p.a.location,
+      start: p.a.start,
+      deadline: p.a.deadline,
+      descriptionWords: p.a.description?.split(/\s+/).length ?? 0,
+      comparableText: !!p.sh,
+    })),
+    pairs: pairs.sort((x, y) => y.confidence - x.confidence),
   };
 }

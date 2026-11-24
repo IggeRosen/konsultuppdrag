@@ -214,8 +214,8 @@ export default function Duplicates({
         </p>
         <p>
           Övriga par får en <strong>bedömd sannolikhet</strong> i procent: titelns likhet ger upp till 55 poäng och
-          beskrivningens likhet upp till 35 (saknas beskrivning väger titeln för båda; är texterna under 30 % lika dras
-          15 poäng av). Samma ort ger +8, olika orter −20,
+          beskrivningens likhet upp till 35 (saknas beskrivning väger titeln för båda, men korta allmänna titlar som
+          ”Business Analyst” ger då högst 65 poäng; är texterna under 30 % lika dras 15 poäng av). Samma ort ger +8, olika orter −20 (orter i samma region, t.ex. Solna och Stockholm, räknas varken som samma eller olika),
           samma startdatum +5, samma sista ansökningsdag +4, startdatum mer än två veckor isär −10 och samma källa −5.
           Par under 50 % visas inte. Datumstämplar och prefix som ”Konsultuppdrag –” tas bort innan titlarna jämförs.
         </p>
