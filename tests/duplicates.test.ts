@@ -80,6 +80,7 @@ test("analyzeDuplicates grupperar och räknar överflödiga uppdrag", () => {
   assert.equal(r.groups[0].certain, false);
   assert.deepEqual(r.overlap.sources, ["A", "B", "C"]);
   assert.equal(r.overlap.matrix[0][1], 1);
+  assert.equal(r.overlap.matrix[0][0], 0);
   assert.equal(r.buckets.find((b) => b.label === "Säker")?.count, 1);
 });
 
@@ -193,4 +194,19 @@ test("ovanliga ord och orter räknas mot hela listan, inte den filtrerade", () =
   assert.ok(!alone.reasons.some((r) => r.includes("ovanlig ort")));
   assert.ok(withCorpus.reasons.some((r) => r.includes("ovanlig ort")));
   assert.ok(withCorpus.confidence > alone.confidence);
+});
+
+test("källmatrisen räknar annonser, inte par", () => {
+  // En annons hos A och tre hos B om samma uppdrag: 1 annons hos A delas med B, 3 hos B delas med A.
+  const list: Assignment[] = [
+    a({ id: "a:1", source: "A", url: "https://a.se/1", title: "Senior Javautvecklare", description: LOREM, location: "Stockholm" }),
+    ...[1, 2, 3].map((n) => a({ id: `b:${n}`, source: "B", url: `https://b.se/${n}`, title: "Senior Javautvecklare", description: LOREM, location: "Stockholm" })),
+  ];
+  const r = analyzeDuplicates(list);
+  assert.equal(r.groups.length, 1);
+  assert.deepEqual(r.overlap.sources, ["A", "B"]);
+  assert.deepEqual(r.overlap.matrix, [
+    [0, 1],
+    [3, 3],
+  ]);
 });

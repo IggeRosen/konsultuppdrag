@@ -60,7 +60,7 @@ function ConfidenceChart({ buckets }: { buckets: DuplicateReport["buckets"] }) {
   );
 }
 
-/** Värmekarta: hur många dubblettpar två källor delar (diagonalen = inom samma källa). */
+/** Värmekarta: hur många av radkällans annonser som också finns hos kolumnkällan (diagonalen = inom samma källa). */
 function OverlapHeatmap({ overlap }: { overlap: DuplicateReport["overlap"] }) {
   // Bara källor som har någon dubblett, så kartan blir läsbar.
   const keep = overlap.sources.map((_, i) => overlap.matrix[i].some((n) => n > 0));
@@ -69,7 +69,7 @@ function OverlapHeatmap({ overlap }: { overlap: DuplicateReport["overlap"] }) {
   if (!idx.length) return null;
   return (
     <figure className="chart">
-      <figcaption>Vilka källor delar uppdrag? (antal dubblettpar)</figcaption>
+      <figcaption>Vilka källor delar uppdrag? (antal annonser)</figcaption>
       <div className="heat-scroll">
         <table className="heat">
           <thead>
@@ -89,7 +89,9 @@ function OverlapHeatmap({ overlap }: { overlap: DuplicateReport["overlap"] }) {
                 {idx.map((j) => {
                   const n = overlap.matrix[i][j];
                   const label =
-                    i === j ? `${overlap.sources[i]}: ${n} par inom samma källa` : `${overlap.sources[i]} × ${overlap.sources[j]}: ${n} par`;
+                    i === j
+                      ? `${n} annonser från ${overlap.sources[i]} har en dubblett inom ${overlap.sources[i]}`
+                      : `${n} annonser från ${overlap.sources[i]} finns även hos ${overlap.sources[j]}`;
                   return (
                     <td
                       key={j}
@@ -107,14 +109,85 @@ function OverlapHeatmap({ overlap }: { overlap: DuplicateReport["overlap"] }) {
           </tbody>
         </table>
       </div>
-      <p className="chart-note">Mörkare ruta = fler gemensamma uppdrag. Diagonalen visar dubbletter inom samma källa.</p>
+      <p className="chart-note">
+        Läs radvis: siffran är hur många av radens annonser som även finns hos kolumnens källa. Diagonalen visar
+        annonser med dubblett inom samma källa. Mörkare ruta = fler annonser.
+      </p>
+    </figure>
+  );
+}
+
+/** Liten matris för en grupp: bedömd säkerhet för varje par av annonser (tomt = under 50 %). */
+function GroupMatrix({ group }: { group: DuplicateGroup }) {
+  const n = group.items.length;
+  const pos = new Map(group.items.map((it, i) => [it.id, i]));
+  const cell = group.items.map(() => group.items.map((): DuplicateGroup["pairs"][number] | null => null));
+  for (const p of group.pairs) {
+    const i = pos.get(p.a);
+    const j = pos.get(p.b);
+    if (i === undefined || j === undefined) continue;
+    cell[i][j] = p;
+    cell[j][i] = p;
+  }
+  const label = (i: number) => {
+    const it = group.items[i];
+    return `${i + 1} ${it.source}${it.company ? ` (${it.company})` : ""}`;
+  };
+  return (
+    <figure className="dup-matrix">
+      <figcaption>Hur annonserna hänger ihop (nummer enligt listan ovan)</figcaption>
+      <div className="heat-scroll">
+        <table className="heat">
+          <thead>
+            <tr>
+              <th />
+              {group.items.map((_, j) => (
+                <th key={j} scope="col">
+                  {j + 1}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {group.items.map((it, i) => (
+              <tr key={it.id}>
+                <th scope="row" title={label(i)}>
+                  {i + 1}
+                </th>
+                {Array.from({ length: n }, (_, j) => {
+                  const p = cell[i][j];
+                  if (i === j) return <td key={j} className="zero self" aria-label="samma annons" />;
+                  const text = p ? (p.certain ? "säker" : `${p.confidence} %`) : "under 50 %";
+                  const title = `${label(i)} ↔ ${label(j)}: ${text}`;
+                  return (
+                    <td
+                      key={j}
+                      title={title}
+                      aria-label={title}
+                      className={p ? "" : "zero"}
+                      style={p ? { background: `color-mix(in srgb, var(--accent) ${p.certain ? 100 : Math.round(15 + ((p.confidence - 50) / 49) * 70)}%, var(--surface))` } : undefined}
+                    >
+                      <span className={p && (p.certain || p.confidence >= 80) ? "on-dark" : ""}>{p ? (p.certain ? "✔" : p.confidence) : ""}</span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="chart-note">
+        Siffran är bedömd sannolikhet i procent, ✔ betyder säker dubblett. Tom ruta: paret är under 50 % på egen hand men
+        hör till gruppen via andra annonser.
+      </p>
     </figure>
   );
 }
 
 function GroupCard({ group, highlight }: { group: DuplicateGroup; highlight: boolean }) {
   const byId = new Map(group.items.map((i) => [i.id, i]));
-  const name = (id: string) => byId.get(id)?.source ?? id;
+  const pos = new Map(group.items.map((it, i) => [it.id, i + 1]));
+  const name = (id: string) => `${pos.get(id) ?? "?"} ${byId.get(id)?.source ?? id}`;
   return (
     <article className={`card dup-group${highlight ? " highlight" : ""}`} id={`dup-${group.items[0].id}`}>
       <div className="dup-head">
@@ -129,8 +202,9 @@ function GroupCard({ group, highlight }: { group: DuplicateGroup; highlight: boo
         <span className="dup-count">{group.items.length} annonser</span>
       </div>
       <ul className="dup-items">
-        {group.items.map((it) => (
+        {group.items.map((it, i) => (
           <li key={it.id}>
+            <span className="dup-num">{i + 1}</span>
             <span className="badge">{it.source}</span>{" "}
             <a href={it.url} target="_blank" rel="noopener noreferrer">
               {it.title}
@@ -145,6 +219,7 @@ function GroupCard({ group, highlight }: { group: DuplicateGroup; highlight: boo
       </ul>
       <details className="dup-why">
         <summary>Varför?</summary>
+        {group.items.length > 2 && <GroupMatrix group={group} />}
         <ul>
           {group.pairs.map((p) => (
             <li key={`${p.a}|${p.b}`}>
