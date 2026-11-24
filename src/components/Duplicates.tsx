@@ -227,10 +227,10 @@ export default function Duplicates({
             Alla ({report.groups.length})
           </button>
           <button aria-pressed={show === "sure"} onClick={() => setShow("sure")}>
-            Med säkra ({report.groups.filter(hasSure).length})
+            Säkra ({report.groups.filter(hasSure).length})
           </button>
           <button aria-pressed={show === "maybe"} onClick={() => setShow("maybe")}>
-            Med misstänkta ({report.groups.filter((g) => !g.certain).length})
+            Misstänkta ({report.groups.filter((g) => !g.certain).length})
           </button>
         </div>
       </div>
