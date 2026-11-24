@@ -136,8 +136,13 @@ footer { margin-top: 40px; color: var(--muted); font-size: 13px; text-align: cen
 .dup-count { color: var(--muted); font-size: 13px; }
 .dup-items { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
 .dup-items a { color: var(--text); font-weight: 600; }
-.dup-meta { display: block; color: var(--muted); font-size: 13px; }
+.dup-meta { display: block; padding-left: 1.6em; color: var(--muted); font-size: 13px; }
 .dup-why { margin-top: 8px; font-size: 13px; color: var(--muted); }
 .dup-why summary { cursor: pointer; }
 .dup-why ul { margin: 6px 0 0; padding-left: 18px; }
 .dup-against { color: var(--bad); }
+.dup-num { display: inline-block; min-width: 1.6em; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.dup-matrix { margin: 8px 0 10px; }
+.dup-matrix figcaption { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.dup-matrix .heat th { text-align: center; padding: 0 4px; }
+.dup-matrix .heat td.self { background: var(--border); }

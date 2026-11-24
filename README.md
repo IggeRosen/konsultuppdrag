@@ -31,8 +31,9 @@ annonslänk jämförs:
 - `?explain=ord` visar alla annonser med ordet i titel eller ort och bedömningen av varje par, även under 50 %.
 
 Vyn visar nyckeltal (totalt, unika, säkra och misstänkta dubbletter), ett stapeldiagram över paren per
-säkerhetsintervall, en värmekarta över vilka källor som delar uppdrag och varje dubblettgrupp med motivering
-("Varför?"). I uppdragslistan märks dubbletter med säkerhet och övriga källor, och "Dölj säkra dubbletter"
+säkerhetsintervall, en värmekarta över hur många annonser från varje källa som även finns hos en annan källa
+(läses radvis) och varje dubblettgrupp med motivering ("Varför?"), där grupper med fler än två annonser även
+visar en matris med bedömd sannolikhet för varje par. I uppdragslistan märks dubbletter med säkerhet och övriga källor, och "Dölj säkra dubbletter"
 visar bara en annons per grupp av säkra dubbletter.
 
 ## Arkitektur

@@ -62,7 +62,11 @@ export interface DuplicateReport {
   groups: DuplicateGroup[];
   /** Antal par per säkerhetsintervall, för diagram. */
   buckets: { label: string; min: number; max: number; count: number }[];
-  /** Antal dubblettpar mellan källor (symmetrisk matris, diagonalen = inom samma källa). */
+  /**
+   * Annonser per källa som har en dubblett i en annan källa: matrix[rad][kolumn] = antal annonser
+   * från radens källa vars grupp även har en annons från kolumnens källa. Diagonalen = annonser
+   * vars grupp har ytterligare en annons från samma källa. Inte symmetrisk.
+   */
   overlap: { sources: string[]; matrix: number[][] };
 }
 
@@ -505,11 +509,14 @@ export function analyzeDuplicates(assignments: Assignment[], corpus: Assignment[
   const sources = [...new Set(assignments.map((a) => a.source))].sort((a, b) => a.localeCompare(b, "sv"));
   const idx = new Map(sources.map((s, i) => [s, i]));
   const matrix = sources.map(() => sources.map(() => 0));
-  for (const { i, j } of pairs) {
-    const a = idx.get(prep[i].a.source)!;
-    const b = idx.get(prep[j].a.source)!;
-    matrix[a][b]++;
-    if (a !== b) matrix[b][a]++;
+  for (const g of groups) {
+    const count = new Map<number, number>();
+    for (const it of g.items) count.set(idx.get(it.source)!, (count.get(idx.get(it.source)!) ?? 0) + 1);
+    for (const [a, n] of count)
+      for (const [b, m] of count) {
+        if (a !== b) matrix[a][b] += n;
+        else if (m > 1) matrix[a][a] += n;
+      }
   }
 
   return {
