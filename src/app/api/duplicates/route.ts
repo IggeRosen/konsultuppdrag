@@ -18,10 +18,12 @@ export async function GET(req: Request) {
   const keywords = parseKeywords(params.get("keywords"));
   const mode: MatchMode = params.get("mode") === "all" ? "all" : "any";
   const force = params.get("refresh") === "1";
-  const { results } = await loadAssignments(keywords, mode, force);
+  const { assignments, results } = await loadAssignments(keywords, mode, force);
+  // Dubbletter letas bland de visade annonserna, men hur ovanliga ord och orter är räknas på
+  // hela listan (se analyzeDuplicates).
   const explain = params.get("explain");
-  if (explain) return NextResponse.json(explainDuplicates(results, explain));
-  return NextResponse.json(analyzeDuplicates(results), {
+  if (explain) return NextResponse.json(explainDuplicates(results, explain, assignments));
+  return NextResponse.json(analyzeDuplicates(results, assignments), {
     headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=900" },
   });
 }
