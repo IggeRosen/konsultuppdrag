@@ -90,3 +90,54 @@ button.src { cursor: pointer; font: inherit; color: inherit; }
 .skeleton { height: 86px; border-radius: 12px; background: linear-gradient(90deg, var(--surface), var(--border), var(--surface)); background-size: 200% 100%; animation: sh 1.2s infinite; }
 @keyframes sh { to { background-position: -200% 0; } }
 footer { margin-top: 40px; color: var(--muted); font-size: 13px; text-align: center; }
+
+/* Vyer */
+.tabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--border); }
+.tabs button { border: 0; background: transparent; padding: 8px 14px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-pressed=true] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* Dubbletter */
+.dup-badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.dup-badge.sure { background: color-mix(in srgb, var(--good) 15%, var(--surface)); color: var(--good); }
+.dup-badge.maybe { background: color-mix(in srgb, var(--new) 15%, var(--surface)); color: var(--new); }
+.dup-link { border: 0; background: transparent; padding: 0; cursor: pointer; color: var(--muted); font-size: 13px; text-align: left; }
+.dup-link:hover { color: var(--accent); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 20px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.kpi-value { font-size: 32px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.kpi-label { color: var(--muted); font-size: 14px; }
+.kpi-note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; margin-top: 10px; align-items: start; }
+.chart { margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.chart figcaption { font-weight: 600; font-size: 14px; margin-bottom: 10px; }
+.chart-note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.bars { display: flex; gap: 8px; align-items: flex-end; height: 180px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; min-width: 0; }
+.bar-value { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+.bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; border-bottom: 1px solid var(--border); }
+.bar { width: 100%; min-height: 0; background: var(--accent); border-radius: 4px 4px 0 0; }
+.bar-col:hover .bar { filter: brightness(1.15); }
+.bar-label { font-size: 11px; color: var(--muted); margin-top: 4px; white-space: nowrap; }
+.heat-scroll { overflow-x: auto; }
+.heat { border-collapse: separate; border-spacing: 2px; font-size: 12px; }
+.heat th { font-weight: 500; color: var(--muted); text-align: right; padding: 0 6px; white-space: nowrap; }
+.heat th.heat-col { height: 90px; vertical-align: bottom; padding: 0; }
+.heat th.heat-col span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); }
+.heat td { width: 28px; height: 28px; min-width: 28px; text-align: center; border-radius: 4px; color: var(--text); font-variant-numeric: tabular-nums; }
+.heat td.zero { background: var(--bg); }
+.heat td.diag { outline: 1px dashed var(--border); outline-offset: -1px; }
+.heat td .on-dark { color: #fff; }
+.method { margin-top: 10px; font-size: 14px; }
+.method summary { cursor: pointer; font-weight: 600; }
+.method p { color: var(--muted); margin: 8px 0 0; }
+.dup-controls { margin: 16px 0 10px; }
+.dup-group.highlight { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.dup-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dup-count { color: var(--muted); font-size: 13px; }
+.dup-items { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.dup-items a { color: var(--text); font-weight: 600; }
+.dup-meta { display: block; color: var(--muted); font-size: 13px; }
+.dup-why { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.dup-why summary { cursor: pointer; }
+.dup-why ul { margin: 6px 0 0; padding-left: 18px; }
+.dup-against { color: var(--bad); }

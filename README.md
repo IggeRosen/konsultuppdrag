@@ -12,6 +12,22 @@ filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Mark
 - "Nya sedan senaste besöket" och ★ sparade uppdrag
 - Status per källa, så man ser om en portal inte svarar – klicka på en källa för att dölja/visa den
 
+## Dubbletter
+
+Fliken **Dubbletter** (och `GET /api/duplicates`) analyserar hela uppdragslistan och visar hur många uppdrag
+som finns hos flera källor (`src/lib/duplicates.ts`). Par med liknande titel eller samma annonslänk jämförs:
+
+- **Säker dubblett**: samma annonslänk; i praktiken samma titel och minst 85 % lik beskrivning; eller minst
+  92 % lik beskrivning (kopierad text) och minst 60 % lik titel.
+- **Misstänkt dubblett (50–99 %)**: titelns likhet ger upp till 55 poäng, beskrivningens upp till 35 (saknas
+  beskrivning väger titeln för båda; under 30 % lik text −15). Samma ort +8, olika orter −20, samma startdatum
+  +5, samma sista ansökningsdag +4, start mer än två veckor isär −10, samma källa −5. Par under 50 % visas inte.
+
+Vyn visar nyckeltal (totalt, unika, säkra och misstänkta dubbletter), ett stapeldiagram över paren per
+säkerhetsintervall, en värmekarta över vilka källor som delar uppdrag och varje dubblettgrupp med motivering
+("Varför?"). I uppdragslistan märks dubbletter med säkerhet och övriga källor, och "Dölj säkra dubbletter"
+visar bara en annons per grupp av säkra dubbletter.
+
 ## Arkitektur
 
 ```
@@ -37,6 +53,8 @@ src/lib/sources/academicwork.ts       Academic Work (sitemap + annonssidornas te
 src/lib/sources/rightpeople.ts        Right People Group (__NEXT_DATA__ på listsidan, Sverige + remote)
 src/lib/sources/gigstep.ts            Gigstep (Teamtailor: sitemap + JSON-LD, utan rena rekryteringar)
 src/lib/sources/asociety.ts           A Society (RSC-data på uppdragslistan, bara Sverige)
+src/lib/duplicates.ts                dubblettanalys (säkra och misstänkta dubbletter)
+src/components/Duplicates.tsx        dubblettvyn (nyckeltal, diagram, värmekarta, grupper)
 src/lib/sources/platsbanken.ts       Platsbanken via Arbetsförmedlingens JobSearch-API (bara vid nyckelordssökning)
 src/lib/sources/emagine-search.ts    sökförfrågan: portalens format + inlärning ur valideringsfel
 src/lib/sweden.ts                    Sverigefilter för källor med uppdrag i flera länder
