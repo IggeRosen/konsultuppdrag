@@ -40,7 +40,7 @@ function ConfidenceChart({ buckets }: { buckets: DuplicateReport["buckets"] }) {
   const max = Math.max(1, ...buckets.map((b) => b.count));
   return (
     <figure className="chart">
-      <figcaption>Dubblettpar per bedömd säkerhet</figcaption>
+      <figcaption>Jämförda par per bedömd säkerhet</figcaption>
       <div className="bars" role="list">
         {buckets.map((b) => (
           <div className="bar-col" role="listitem" key={b.label} title={`${b.label}: ${b.count} par`}>
@@ -52,6 +52,10 @@ function ConfidenceChart({ buckets }: { buckets: DuplicateReport["buckets"] }) {
           </div>
         ))}
       </div>
+      <p className="chart-note">
+        Ett par är två annonser som jämförts. Finns samma uppdrag i tre annonser blir det tre par men två dubbletter,
+        så antalet par kan vara större än antalet dubbletter ovan.
+      </p>
     </figure>
   );
 }
@@ -192,8 +196,8 @@ export default function Duplicates({
       <div className="kpis">
         <Kpi label="uppdrag totalt" value={report.total} />
         <Kpi label="unika uppdrag" value={report.unique} note={`${share} % av listan är dubbletter`} />
-        <Kpi label="säkra dubbletter" value={report.redundantCertain} />
-        <Kpi label="misstänkta dubbletter" value={report.redundantSuspected} />
+        <Kpi label="säkra dubbletter" value={report.redundantCertain} note="annonser som är kopior av en annan" />
+        <Kpi label="misstänkta dubbletter" value={report.redundantSuspected} note="annonser som troligen är kopior" />
       </div>
 
       <div className="charts">
@@ -227,10 +231,10 @@ export default function Duplicates({
             Alla ({report.groups.length})
           </button>
           <button aria-pressed={show === "sure"} onClick={() => setShow("sure")}>
-            Med säkra ({report.groups.filter(hasSure).length})
+            Säkra ({report.groups.filter(hasSure).length})
           </button>
           <button aria-pressed={show === "maybe"} onClick={() => setShow("maybe")}>
-            Med misstänkta ({report.groups.filter((g) => !g.certain).length})
+            Misstänkta ({report.groups.filter((g) => !g.certain).length})
           </button>
         </div>
       </div>
