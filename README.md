@@ -25,7 +25,7 @@ annonslänk jämförs:
   högst två ord upp till 45. Beskrivningarna ger upp till 35 p: kopierad text (fyrordsföljder) eller omskriven text
   om samma sak (idf-viktad ordlikhet, där ovanliga ord som "PLM" väger tungt). Saknas beskrivning väger titeln för
   båda (högst 65 p för korta titlar); helt olika texter −15. Samma ort +8, samma ovanliga ort (under 3 % av
-  annonserna) +18, olika orter −20, orter i samma region (t.ex. Solna och Stockholm) neutrala. Samma startdatum +5,
+  annonserna) +20, olika orter −20, orter i samma region (t.ex. Solna och Stockholm) neutrala. Samma startdatum +5,
   samma sista ansökningsdag +4, start mer än två veckor isär −10, samma källa och samma företag −5. Par under 50 %
   visas inte.
 - `?explain=ord` visar alla annonser med ordet i titel eller ort och bedömningen av varje par, även under 50 %.

@@ -16,7 +16,7 @@ import type { Assignment } from "./types.ts";
 //       omskriven text om samma sak (idf-viktad ordlikhet × 0,85, där ovanliga ord som "PLM" och
 //       "Teamcenter" väger tungt); saknas beskrivning väger titeln för båda (högst 65 p för korta
 //       titlar, annars 90 p); texter under 20 % lika −15 p,
-//     • samma ort (+8 p, +18 p om orten finns i under 3 % av annonserna, t.ex. Finspång) eller
+//     • samma ort (+8 p, +20 p om orten finns i under 3 % av annonserna, t.ex. Finspång) eller
 //       olika orter (−20 p); orter i samma region (t.ex. Solna och Stockholm) är neutrala,
 //     • samma startdatum (+5 p), samma sista ansökningsdag (+4 p), startdatum mer än två
 //       veckor isär (−10 p),
@@ -372,7 +372,7 @@ function addContext(p: Prepared, q: Prepared, ctx: Context, reasons: string[], a
     if (common.length) {
       // Samma mindre ort (t.ex. Finspång) säger mer än samma storstad.
       const rare = common.some((w) => ctx.placeShare(w) < 0.03);
-      score += rare ? 18 : 8;
+      score += rare ? 20 : 8;
       reasons.push(`Samma ort (${x.location}${rare ? ", ovanlig ort" : ""})`);
     } else if (sameRegion) {
       reasons.push(`Samma region (${x.location} / ${y.location})`);

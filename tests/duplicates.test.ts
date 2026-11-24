@@ -163,3 +163,15 @@ test("omskrivna annonser om samma uppdrag på en ovanlig ort grupperas", () => {
   assert.deepEqual(g.items.map((i) => i.id).sort(), ["pb:1", "pb:2", "pb:3"]);
   assert.ok(g.pairs.some((p) => p.reasons.some((r) => r.includes("ovanlig ort"))));
 });
+
+test("kundens egen annons med annan text kopplas till mäklarnas annonser på en ovanlig ort", () => {
+  // Som Siemens Energys "Business Analyst PLM" (31692116) mot UNIK:s "Businees Analyst inom PLM"
+  // (31740925): bara ~16 % lik text, men samma ovanliga ort.
+  const pad = Array.from({ length: 200 }, (_, i) =>
+    a({ id: `p:${i}`, source: `P${i % 5}`, url: `https://p.se/${i}`, title: `Utvecklare ${i} inom område ${i}`, location: "Stockholm" }),
+  );
+  const own = a({ id: "pb:siemens", source: "Platsbanken", company: "Siemens Energy AB", url: "https://pb.se/s", title: "Business Analyst PLM", location: "Finspång" });
+  const broker = a({ id: "pb:unik", source: "Platsbanken", company: "UNIK Resurs", url: "https://pb.se/u", title: "Businees Analyst inom PLM", location: "Finspång" });
+  const r = analyzeDuplicates([...pad, own, broker]);
+  assert.ok(r.groups.some((g) => g.items.some((i) => i.id === "pb:siemens") && g.items.some((i) => i.id === "pb:unik")));
+});

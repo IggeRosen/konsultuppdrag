@@ -219,7 +219,7 @@ export default function Duplicates({
           beskrivning väger titeln för båda; handlar texterna om helt olika saker dras 15 poäng av.
         </p>
         <p>
-          Samma ort ger +8 och samma <em>ovanliga</em> ort (under 3 % av annonserna, t.ex. Finspång) +18. Olika orter
+          Samma ort ger +8 och samma <em>ovanliga</em> ort (under 3 % av annonserna, t.ex. Finspång) +20. Olika orter
           ger −20, men orter i samma region (t.ex. Solna och Stockholm) räknas varken som samma eller olika. Samma
           startdatum ger +5, samma sista ansökningsdag +4 och startdatum mer än två veckor isär −10. Samma källa och samma
           företag ger −5. Par under 50 % visas inte. Datumstämplar och prefix som ”Konsultuppdrag –” tas bort innan
