@@ -1,0 +1,368 @@
+import type { Assignment } from "./types.ts";
+
+// Dubblettanalys av uppdragslistan. Samma uppdrag publiceras ofta av flera mäklare (en kund
+// upphandlar via flera ramavtal) eller två gånger av samma källa (t.ex. svensk och engelsk
+// version). Varje par av uppdrag som kan vara samma uppdrag får en bedömning:
+//
+//   SÄKER dubblett (100 %) när något av följande gäller:
+//     • samma annonslänk (efter normalisering), eller
+//     • titeln är i praktiken identisk OCH beskrivningen är minst 85 % lik, eller
+//     • beskrivningen är minst 92 % lik (kopierad text) OCH titeln minst 60 % lik.
+//
+//   MISSTÄNKT dubblett (50–99 %) annars, med en sannolikhet som byggs upp av poäng:
+//     • titelns likhet (0–55 p): ord- och teckenlikhet, datum och "Konsultuppdrag –" bortrensade,
+//     • beskrivningens likhet (0–35 p): andel gemensamma fyrordsföljder (shingles); saknas
+//       beskrivning på någon sida skalas titelpoängen upp i stället; är texterna under 30 %
+//       lika dras 15 p av (mäklare kopierar oftast kundens text),
+//     • samma ort (+8 p) eller olika orter (−20 p),
+//     • samma startdatum (+5 p), samma sista ansökningsdag (+4 p), startdatum mer än två
+//       veckor isär (−10 p),
+//     • samma källa (−5 p): en källa publicerar sällan samma uppdrag två gånger.
+//   Summan begränsas till 0–99 %. Par under MIN_CONFIDENCE (50 %) redovisas inte.
+//
+// Grupper bildas av alla par över gränsen (ett uppdrag kan finnas hos tre mäklare).
+// "Överflödiga" uppdrag = gruppens storlek minus ett, dvs. hur många färre uppdrag listan
+// hade haft utan dubbletter.
+
+export const MIN_CONFIDENCE = 50;
+
+export interface DuplicatePair {
+  a: string;
+  b: string;
+  confidence: number;
+  certain: boolean;
+  /** Det som talar för att det är samma uppdrag. */
+  reasons: string[];
+  /** Det som talar emot. */
+  against: string[];
+}
+
+export type DuplicateItem = Pick<Assignment, "id" | "source" | "title" | "url" | "company" | "location" | "published" | "start" | "deadline">;
+
+export interface DuplicateGroup {
+  items: DuplicateItem[];
+  pairs: DuplicatePair[];
+  /** Alla uppdrag i gruppen hänger ihop via säkra par. */
+  certain: boolean;
+  /** Gruppens svagaste nödvändiga länk (0–100). */
+  confidence: number;
+}
+
+export interface DuplicateReport {
+  total: number;
+  /** Antal uppdrag kvar om varje grupp räknas en gång. */
+  unique: number;
+  /** Uppdrag som är dubbletter av ett annat (gruppstorlek − 1, summerat). */
+  redundant: number;
+  redundantCertain: number;
+  redundantSuspected: number;
+  groups: DuplicateGroup[];
+  /** Antal par per säkerhetsintervall, för diagram. */
+  buckets: { label: string; min: number; max: number; count: number }[];
+  /** Antal dubblettpar mellan källor (symmetrisk matris, diagonalen = inom samma källa). */
+  overlap: { sources: string[]; matrix: number[][] };
+}
+
+// ---------- normalisering ----------
+
+const STOP = new Set(
+  "och i på till för med av en ett the a an of to for in at on and or som är vi du till hos inom mot konsult konsulter konsultuppdrag uppdrag consultant consultants task request assignment konsulentoppdrag konsulentopgave toimeksianto ny nytt".split(
+    " ",
+  ),
+);
+
+function fold(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/ø/g, "o")
+    .replace(/æ/g, "ae");
+}
+
+/** Titeln utan datumstämplar, prefix som "Konsultuppdrag –" och skiljetecken. */
+export function normalizeTitle(title: string): string {
+  return fold(title)
+    .replace(/\(?\b(20\d{2})[.\-/]\d{1,2}[.\-/]\d{1,2}\)?/g, " ")
+    .replace(/\(?\b\d{1,2}[.\-/]\d{1,2}[.\-/](20\d{2})\)?/g, " ")
+    .replace(/\(?\b\d{1,2} (jan|feb|mar|apr|maj|may|jun|jul|aug|sep|okt|oct|nov|dec)[a-z]* 20\d{2}\)?/g, " ")
+    .replace(/^\s*(konsultuppdrag|consultant (task|request)|konsulentoppdrag|konsulentopgave|toimeksianto|uppdrag)\s*[-–|:]\s*/, "")
+    .replace(/[^a-z0-9#+]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function titleTokens(title: string): string[] {
+  return [...new Set(normalizeTitle(title).split(" ").filter((t) => t.length > 1 && !STOP.has(t)))];
+}
+
+function dice<T>(a: Set<T>, b: Set<T>): number {
+  if (!a.size || !b.size) return 0;
+  let common = 0;
+  for (const x of a) if (b.has(x)) common++;
+  return (2 * common) / (a.size + b.size);
+}
+
+function bigrams(s: string): Set<string> {
+  const t = s.replace(/ /g, "");
+  const out = new Set<string>();
+  for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2));
+  return out;
+}
+
+/** Titellikhet 0–1: det högsta av ordlikhet och teckenlikhet. */
+export function titleSimilarity(a: string, b: string): number {
+  const na = normalizeTitle(a);
+  const nb = normalizeTitle(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  return Math.max(dice(new Set(titleTokens(a)), new Set(titleTokens(b))), dice(bigrams(na), bigrams(nb)));
+}
+
+/** Fyrordsföljder i beskrivningen (null om texten är för kort för att jämföras). */
+export function shingles(text: string | undefined): Set<string> | null {
+  if (!text) return null;
+  const words = fold(text)
+    .replace(/[^a-z0-9#+]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 400);
+  if (words.length < 25) return null;
+  const out = new Set<string>();
+  for (let i = 0; i + 4 <= words.length; i++) out.add(words.slice(i, i + 4).join(" "));
+  return out;
+}
+
+/** Likhet 0–1 mellan två shingle-mängder (andel av den mindre mängden som återfinns i den större). */
+export function textSimilarity(a: Set<string> | null, b: Set<string> | null): number | null {
+  if (!a || !b) return null;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let common = 0;
+  for (const x of small) if (large.has(x)) common++;
+  return common / small.size;
+}
+
+function normUrl(u: string): string {
+  try {
+    const url = new URL(u);
+    return `${url.hostname.replace(/^www\./, "")}${url.pathname.replace(/\/+$/, "")}`.toLowerCase();
+  } catch {
+    return u.toLowerCase();
+  }
+}
+
+function places(loc: string | undefined): Set<string> {
+  if (!loc) return new Set();
+  return new Set(
+    fold(loc)
+      .split(/[^a-z]+/)
+      .filter((w) => w.length > 2 && !["eller", "och", "remote", "distans", "hybrid", "sverige", "sweden", "onsite", "plats", "med", "mojlighet"].includes(w)),
+  );
+}
+
+const pct = (x: number) => `${Math.round(x * 100)} %`;
+const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
+
+// ---------- jämförelse av ett par ----------
+
+interface Prepared {
+  a: Assignment;
+  tokens: string[];
+  sh: Set<string> | null;
+  url: string;
+  places: Set<string>;
+}
+
+function prepare(a: Assignment): Prepared {
+  return { a, tokens: titleTokens(a.title), sh: shingles(a.description), url: normUrl(a.url), places: places(a.location) };
+}
+
+/** Bedömer om två uppdrag är samma uppdrag. Returnerar null under MIN_CONFIDENCE. */
+export function comparePair(x: Assignment, y: Assignment): DuplicatePair | null {
+  return compareInner(prepare(x), prepare(y));
+}
+
+function compareInner(p: Prepared, q: Prepared): DuplicatePair | null {
+  const x = p.a;
+  const y = q.a;
+  const reasons: string[] = [];
+  const against: string[] = [];
+  const pair = (confidence: number, certain: boolean): DuplicatePair => ({ a: x.id, b: y.id, confidence, certain, reasons, against });
+
+  if (p.url === q.url) {
+    reasons.push("Samma annonslänk");
+    return pair(100, true);
+  }
+
+  const tSim = titleSimilarity(x.title, y.title);
+  const dSim = textSimilarity(p.sh, q.sh);
+  if (tSim >= 0.95) reasons.push("Samma titel");
+  else if (tSim >= 0.5) reasons.push(`Titeln ${pct(tSim)} lik`);
+  else against.push(`Titeln bara ${pct(tSim)} lik`);
+  if (dSim !== null) {
+    if (dSim >= 0.5) reasons.push(`Beskrivningen ${pct(dSim)} lik${dSim >= 0.85 ? " (samma text)" : ""}`);
+    else against.push(`Beskrivningen bara ${pct(dSim)} lik`);
+  }
+
+  if ((tSim >= 0.95 && dSim !== null && dSim >= 0.85) || (dSim !== null && dSim >= 0.92 && tSim >= 0.6)) {
+    addContext(p, q, reasons, against);
+    return pair(100, true);
+  }
+
+  // Titel 0–55 p, beskrivning 0–35 p (saknas den räknas titeln för båda).
+  let score = dSim === null ? tSim * 90 : tSim * 55 + dSim * 35;
+  // Mäklare kopierar oftast kundens text, så helt olika beskrivningar talar emot.
+  if (dSim !== null && dSim < 0.3) score -= 15;
+  score += addContext(p, q, reasons, against);
+  if (x.source === y.source) {
+    score -= 5;
+    against.push("Samma källa");
+  }
+  const confidence = Math.max(0, Math.min(99, Math.round(score)));
+  return confidence >= MIN_CONFIDENCE ? pair(confidence, false) : null;
+}
+
+/** Ort och datum: lägger till skäl och returnerar poäng. */
+function addContext(p: Prepared, q: Prepared, reasons: string[], against: string[]): number {
+  const x = p.a;
+  const y = q.a;
+  let score = 0;
+  if (p.places.size && q.places.size) {
+    const common = [...p.places].filter((w) => q.places.has(w));
+    if (common.length) {
+      score += 8;
+      reasons.push(`Samma ort (${x.location})`);
+    } else {
+      score -= 20;
+      against.push(`Olika orter (${x.location} / ${y.location})`);
+    }
+  }
+  if (x.start && y.start) {
+    if (x.start === y.start) {
+      score += 5;
+      reasons.push(`Samma startdatum (${x.start})`);
+    } else if (daysApart(x.start, y.start) > 14) {
+      score -= 10;
+      against.push(`Olika startdatum (${x.start} / ${y.start})`);
+    }
+  }
+  if (x.deadline && y.deadline && x.deadline === y.deadline) {
+    score += 4;
+    reasons.push(`Samma sista ansökningsdag (${x.deadline})`);
+  }
+  return score;
+}
+
+// ---------- hela listan ----------
+
+/** Par som är värda att jämföra: delar annonslänk eller minst två ovanliga titelord. */
+function candidatePairs(prep: Prepared[]): [number, number][] {
+  const byToken = new Map<string, number[]>();
+  const byUrl = new Map<string, number[]>();
+  prep.forEach((p, i) => {
+    for (const t of p.tokens) (byToken.get(t) ?? byToken.set(t, []).get(t)!).push(i);
+    (byUrl.get(p.url) ?? byUrl.set(p.url, []).get(p.url)!).push(i);
+  });
+  // Mycket vanliga ord ("senior", "utvecklare") ger för många kandidater och säger lite.
+  const maxPosting = Math.max(40, Math.round(prep.length * 0.05));
+  const shared = new Map<string, number>();
+  const key = (i: number, j: number) => (i < j ? `${i},${j}` : `${j},${i}`);
+  for (const ids of byToken.values()) {
+    if (ids.length < 2 || ids.length > maxPosting) continue;
+    for (let m = 0; m < ids.length; m++) for (let n = m + 1; n < ids.length; n++) shared.set(key(ids[m], ids[n]), (shared.get(key(ids[m], ids[n])) ?? 0) + 1);
+  }
+  const out = new Set<string>();
+  for (const [k, n] of shared) {
+    const [i, j] = k.split(",").map(Number);
+    const fewTokens = Math.min(prep[i].tokens.length, prep[j].tokens.length) <= 2;
+    if (n >= 2 || (fewTokens && n >= 1)) out.add(k);
+  }
+  for (const ids of byUrl.values()) for (let m = 0; m < ids.length; m++) for (let n = m + 1; n < ids.length; n++) out.add(key(ids[m], ids[n]));
+  return [...out].map((k) => k.split(",").map(Number) as [number, number]);
+}
+
+class UnionFind {
+  parent: number[];
+  constructor(n: number) {
+    this.parent = Array.from({ length: n }, (_, i) => i);
+  }
+  find(i: number): number {
+    while (this.parent[i] !== i) i = this.parent[i] = this.parent[this.parent[i]];
+    return i;
+  }
+  union(i: number, j: number) {
+    this.parent[this.find(i)] = this.find(j);
+  }
+}
+
+const BUCKETS = [
+  { label: "50–59 %", min: 50, max: 59 },
+  { label: "60–69 %", min: 60, max: 69 },
+  { label: "70–79 %", min: 70, max: 79 },
+  { label: "80–89 %", min: 80, max: 89 },
+  { label: "90–99 %", min: 90, max: 99 },
+  { label: "Säker", min: 100, max: 100 },
+];
+
+export function analyzeDuplicates(assignments: Assignment[]): DuplicateReport {
+  const prep = assignments.map(prepare);
+  const pairs: { i: number; j: number; p: DuplicatePair }[] = [];
+  for (const [i, j] of candidatePairs(prep)) {
+    const p = compareInner(prep[i], prep[j]);
+    if (p) pairs.push({ i, j, p });
+  }
+
+  const all = new UnionFind(prep.length);
+  const sure = new UnionFind(prep.length);
+  for (const { i, j, p } of pairs) {
+    all.union(i, j);
+    if (p.certain) sure.union(i, j);
+  }
+  const members = new Map<number, number[]>();
+  prep.forEach((_, i) => (members.get(all.find(i)) ?? members.set(all.find(i), []).get(all.find(i))!).push(i));
+
+  const groups: DuplicateGroup[] = [];
+  let redundant = 0;
+  let redundantCertain = 0;
+  for (const ids of members.values()) {
+    if (ids.length < 2) continue;
+    redundant += ids.length - 1;
+    const sureRoots = new Set(ids.map((i) => sure.find(i)));
+    redundantCertain += ids.length - sureRoots.size;
+    const inGroup = new Set(ids);
+    const gp = pairs.filter(({ i }) => inGroup.has(i)).map(({ p }) => p);
+    // Svagaste nödvändiga länk: lägsta av varje uppdrags bästa par.
+    const best = ids.map((i) => Math.max(...gp.filter((p) => p.a === prep[i].a.id || p.b === prep[i].a.id).map((p) => p.confidence)));
+    groups.push({
+      items: ids.map((i) => {
+        const { id, source, title, url, company, location, published, start, deadline } = prep[i].a;
+        return { id, source, title, url, company, location, published, start, deadline };
+      }),
+      pairs: gp.sort((a, b) => b.confidence - a.confidence),
+      certain: sureRoots.size === 1,
+      confidence: Math.min(...best),
+    });
+  }
+  groups.sort((a, b) => Number(b.certain) - Number(a.certain) || b.confidence - a.confidence || b.items.length - a.items.length);
+
+  const sources = [...new Set(assignments.map((a) => a.source))].sort((a, b) => a.localeCompare(b, "sv"));
+  const idx = new Map(sources.map((s, i) => [s, i]));
+  const matrix = sources.map(() => sources.map(() => 0));
+  for (const { i, j } of pairs) {
+    const a = idx.get(prep[i].a.source)!;
+    const b = idx.get(prep[j].a.source)!;
+    matrix[a][b]++;
+    if (a !== b) matrix[b][a]++;
+  }
+
+  return {
+    total: assignments.length,
+    unique: assignments.length - redundant,
+    redundant,
+    redundantCertain,
+    redundantSuspected: redundant - redundantCertain,
+    groups,
+    buckets: BUCKETS.map((b) => ({ ...b, count: pairs.filter(({ p }) => p.confidence >= b.min && p.confidence <= b.max).length })),
+    overlap: { sources, matrix },
+  };
+}

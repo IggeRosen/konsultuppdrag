@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MatchedAssignment, SourceStatus } from "@/lib/types";
+import type { DuplicateReport } from "@/lib/duplicates";
+import Duplicates, { ConfidenceBadge } from "./Duplicates";
 
 interface ApiResponse {
   keywords: string[];
@@ -16,7 +18,15 @@ interface ApiResponse {
 const DEFAULT_KEYWORDS = ["Java", "React", ".NET", "Azure"];
 const SUGGESTIONS = ["Python", "TypeScript", "AWS", "Kubernetes", "DevOps", "Projektledare", "Arkitekt", "Scrum", "C#", "SAP", "Test", "Data"];
 
-const LS = { keywords: "ur.keywords", mode: "ur.mode", seen: "ur.seen", saved: "ur.saved" };
+const LS = { keywords: "ur.keywords", mode: "ur.mode", seen: "ur.seen", saved: "ur.saved", hideDup: "ur.hideDup" };
+
+interface DupInfo {
+  certain: boolean;
+  confidence: number;
+  others: string[];
+  /** Första uppdraget bland dem som är säkra dubbletter av varandra; visas även när dubbletter döljs. */
+  primary: boolean;
+}
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -72,6 +82,12 @@ export default function App() {
   const [saved, setSaved] = useState<string[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [tab, setTab] = useState<"list" | "dups">("list");
+  const [dups, setDups] = useState<DuplicateReport | null>(null);
+  const [dupLoading, setDupLoading] = useState(false);
+  const [dupError, setDupError] = useState<string | null>(null);
+  const [dupFocus, setDupFocus] = useState<string | null>(null);
+  const [hideDup, setHideDup] = useState(false);
   const seenAtLoad = useRef<Set<string>>(new Set());
 
   // Initiera från URL (delbar länk) eller localStorage.
@@ -84,8 +100,49 @@ export default function App() {
     seenAtLoad.current = new Set(s);
     setSeen(s);
     setSaved(load<string[]>(LS.saved, []));
+    setHideDup(load<boolean>(LS.hideDup, false));
     setReady(true);
   }, []);
+
+  // Dubblettanalysen görs på hela listan och hämtas efter uppdragen (samma cache på servern).
+  const fetchDups = useCallback(async (refresh = false) => {
+    setDupLoading(true);
+    setDupError(null);
+    try {
+      const res = await fetch(`/api/duplicates${refresh ? "?refresh=1" : ""}`);
+      if (!res.ok) throw new Error(`Servern svarade ${res.status}`);
+      setDups((await res.json()) as DuplicateReport);
+    } catch (e) {
+      setDupError(e instanceof Error ? e.message : "Något gick fel");
+    } finally {
+      setDupLoading(false);
+    }
+  }, []);
+
+  // Per uppdrag: säkert om uppdraget har minst ett säkert par, annars dess bästa pars procent.
+  // Uppdrag som hänger ihop via säkra par bildar ett kluster där det första visas när dubbletter döljs.
+  const dupInfo = useMemo(() => {
+    const m = new Map<string, DupInfo>();
+    for (const g of dups?.groups ?? []) {
+      const ids = g.items.map((it) => it.id);
+      const root = new Map(ids.map((id) => [id, id]));
+      const find = (id: string): string => (root.get(id) === id ? id : find(root.get(id)!));
+      for (const p of g.pairs) if (p.certain) root.set(find(p.b), find(p.a));
+      const seenRoot = new Set<string>();
+      for (const it of g.items) {
+        const own = g.pairs.filter((p) => p.a === it.id || p.b === it.id);
+        const r = find(it.id);
+        m.set(it.id, {
+          certain: own.some((p) => p.certain),
+          confidence: Math.max(...own.map((p) => p.confidence)),
+          others: [...new Set(g.items.filter((o) => o.id !== it.id).map((o) => o.source))],
+          primary: !seenRoot.has(r),
+        });
+        seenRoot.add(r);
+      }
+    }
+    return m;
+  }, [dups]);
 
   const fetchData = useCallback(
     async (refresh = false) => {
@@ -98,6 +155,7 @@ export default function App() {
         if (!res.ok) throw new Error(`Servern svarade ${res.status}`);
         const json = (await res.json()) as ApiResponse;
         setData(json);
+        fetchDups(refresh);
         // Markera allt som hämtats som "sett" till nästa besök.
         const ids = json.results.map((r) => r.id);
         setSeen((prev) => {
@@ -111,7 +169,7 @@ export default function App() {
         setLoading(false);
       }
     },
-    [keywords, mode],
+    [keywords, mode, fetchDups],
   );
 
   useEffect(() => {
@@ -150,6 +208,10 @@ export default function App() {
     const f = filter.trim().toLowerCase();
     let list = data.results.filter((r) => {
       if (hiddenSources.includes(r.source)) return false;
+      if (hideDup) {
+        const d = dupInfo.get(r.id);
+        if (d && !d.primary) return false;
+      }
       if (view === "saved" && !saved.includes(r.id)) return false;
       if (view === "new" && !isNew(r.id)) return false;
       if (!f) return true;
@@ -158,7 +220,7 @@ export default function App() {
     if (sort === "newest") list = [...list].sort((a, b) => (b.published ?? "").localeCompare(a.published ?? ""));
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, filter, sort, view, saved, hiddenSources]);
+  }, [data, filter, sort, view, saved, hiddenSources, hideDup, dupInfo]);
 
   const newCount = data ? data.results.filter((r) => isNew(r.id)).length : 0;
   const suggestions = SUGGESTIONS.filter((s) => !keywords.some((k) => k.toLowerCase() === s.toLowerCase())).slice(0, 6);
@@ -174,6 +236,19 @@ export default function App() {
           {loading ? "Hämtar…" : "↻ Uppdatera"}
         </button>
       </header>
+
+      <nav className="tabs" aria-label="Vy">
+        <button aria-pressed={tab === "list"} onClick={() => setTab("list")}>
+          Uppdrag
+        </button>
+        <button aria-pressed={tab === "dups"} onClick={() => setTab("dups")}>
+          Dubbletter{dups ? ` (${dups.redundant})` : ""}
+        </button>
+      </nav>
+
+      {tab === "dups" && <Duplicates report={dups} loading={dupLoading} error={dupError} focus={dupFocus} />}
+
+      <div hidden={tab !== "list"}>
 
       <section className="panel" aria-label="Nyckelord">
         <form
@@ -239,6 +314,17 @@ export default function App() {
             </select>
           </label>
           <input type="search" placeholder="Filtrera i resultatet…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <label title="Visar bara en annons per säker dubblettgrupp">
+            <input
+              type="checkbox"
+              checked={hideDup}
+              onChange={(e) => {
+                setHideDup(e.target.checked);
+                store(LS.hideDup, e.target.checked);
+              }}
+            />{" "}
+            Dölj säkra dubbletter
+          </label>
         </div>
       </section>
 
@@ -296,6 +382,19 @@ export default function App() {
                 <div className="meta">
                   <span className="badge">{a.source}</span>
                   {isNew(a.id) && <span className="badge new">Ny</span>}
+                  {dupInfo.has(a.id) && (
+                    <button
+                      className="dup-link"
+                      title={`Finns troligen även hos ${dupInfo.get(a.id)!.others.join(", ")}. Klicka för att se varför.`}
+                      onClick={() => {
+                        setDupFocus(a.id);
+                        setTab("dups");
+                      }}
+                    >
+                      <ConfidenceBadge certain={dupInfo.get(a.id)!.certain} confidence={dupInfo.get(a.id)!.confidence} /> även{" "}
+                      {dupInfo.get(a.id)!.others.join(", ")}
+                    </button>
+                  )}
                   {a.company && <span>🏢 {a.company}</span>}
                   {a.location && <span>📍 {a.location}</span>}
                   {a.published && <span>Publicerad {formatDate(a.published)}</span>}
@@ -352,6 +451,8 @@ export default function App() {
               : "Inga uppdrag matchar. Prova färre eller andra nyckelord."}
         </div>
       )}
+
+      </div>
 
       <footer>
         Uppdragen hämtas från publika sidor och cachas i 15 minuter. Klicka på ett uppdrag för att läsa mer och anmäla
