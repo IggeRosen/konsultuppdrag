@@ -143,8 +143,13 @@ export function parseTedNotice(n: Obj, today = new Date().toISOString().slice(0,
 
 /** PLM-upphandlingar behålls alltid, även när de gäller system. */
 const KEEP_RE = /\bPLM\b|\bAras\b|Teamcenter|product lifecycle|produktlivscykel/i;
-/** Tjänsteord: upphandlingen gäller konsulter eller tjänster, inte bara en produkt. */
-const SERVICE_RE = /konsult|konsulter|resurs(er|förstärkning)|kompetens|rådgivning|utredning|analys|stöd till|projektled|förvaltning|systemutvecklare|tjänster inom|\butbildning/i;
+/**
+ * Tjänsteord: upphandlingen gäller konsulter eller tjänster, inte bara en produkt. "förvaltning" räknas
+ * bara som eget ord (inte "Socialförvaltningen"), "partner" inte i "Licenspartner", och "analys" räknas
+ * inte (t.ex. "Spendanalysverktyg" är ett verktyg).
+ */
+const SERVICE_RE =
+  /konsult|resurs(er|förstärkning)|kompetens|rådgivning|utredning|stöd till|projektled|(\b|system|applikations)förvaltning|systemutvecklare|tjänster inom|\butbildning|(?<!licens)partner/i;
 /** Rubriker som tyder på köp av system, programvara, licenser eller hårdvara. */
 const PRODUCT_TITLE_RE =
   /system|plattform|verktyg|programvar|mjukvar|licens|hårdvar|server|databas|lagring|nätverksutrustning|datorer|skrivare|telefoni|e-tjänst(?!er för)|app\b|portal|lösning för|saas|molntjänst/i;

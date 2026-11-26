@@ -84,6 +84,13 @@ test("köp av system och hårdvara markeras, konsulttjänster och PLM behålls",
     ["Förvaltning av ekonomisystem", ["72000000"], false],
     ["PLM-system för produktdata", ["48000000"], false],
     ["Licenser Teamcenter", ["48000000"], false],
+    ["Verksamhetssystem Socialförvaltningen", ["72000000"], true],
+    ["Upphandling av spendanalysverktyg", ["72000000"], true],
+    ["AI-baserat system för automatiserad analys av kunddialoger", ["72000000"], true],
+    ["IT-Partner", ["72000000", "48000000"], false],
+    ["Webbpartner", ["72000000", "48000000"], false],
+    ["Systemförvaltning av ekonomisystem", ["72000000"], false],
+    ["Utveckling och förvaltning av externwebb och intranät i Sitevision", ["72000000", "48000000"], false],
   ];
   for (const [title, cpv, product] of cases) {
     const a = parseTedNotice({ ...NOTICE, "title-proc": { swe: title }, "classification-cpv": cpv, "description-proc": undefined }, "2026-11-26")!;
