@@ -29,10 +29,25 @@ export const TED_QUERY =
   process.env.TED_QUERY ??
   `buyer-country IN (SWE) AND classification-cpv IN (${TED_CPV.join(" ")}) AND notice-type IN (cn-standard cn-social cn-desg)`;
 
+const ymd = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
+
+/**
+ * Hela frågan: grundfrågan plus att annonsen är publicerad de senaste 180 dagarna och (om
+ * `withDeadline`) att sista anbudsdag inte har passerat. scope=ACTIVE räcker inte – API:t
+ * returnerar annars gamla annonser från 2018 och framåt.
+ */
+export function tedQuery(now = new Date(), withDeadline = true): string {
+  const since = new Date(now.getTime() - 180 * 86400000);
+  const parts = [`(${TED_QUERY})`, `publication-date>=${ymd(since)}`];
+  if (withDeadline) parts.push(`deadline-receipt-tender-date-lot>=${ymd(now)}`);
+  return parts.join(" AND ");
+}
+
 /** Fälten som begärs. Okända fältnamn ger fel från API:t, så det finns en kortare reservlista. */
 export const TED_FIELDS = (process.env.TED_FIELDS?.split(",").map((f) => f.trim()).filter(Boolean)) ?? [
   "publication-number",
   "notice-title",
+  "title-proc",
   "buyer-name",
   "buyer-city",
   "publication-date",
@@ -87,10 +102,16 @@ function noticeUrl(links: unknown, id: string): string {
 /** En annons från sök-API:t → Assignment. */
 export function parseTedNotice(n: Obj, today = new Date().toISOString().slice(0, 10)): Assignment | null {
   const id = tedText(n["publication-number"]);
-  const title = tedText(n["notice-title"], " ");
+  const noticeTitle = tedText(n["notice-title"], " ");
+  // Upphandlingens egen rubrik (title-proc) i första hand. notice-title är "Sverige – IT-tjänster –
+  // <titel>" (eForms) eller bara "Sverige-Kalmar: <kategori>" (äldre annonser).
+  const title = tedText(n["title-proc"], " ") ?? noticeTitle;
   if (!id || !title) return null;
-  // Rubriken är ofta "Sverige – IT-tjänster – <titel>": ta bort land och kategori.
-  const shortTitle = title.replace(/^(Sverige|Sweden)\s+[–—-]\s+.+?\s+[–—-]\s+/i, "").trim() || title;
+  const shortTitle =
+    title
+      .replace(/^(Sverige|Sweden)\s+[–—-]\s+.+?\s+[–—-]\s+/i, "")
+      .replace(/^(Sverige|Sweden)-[^:]{1,60}:\s*/i, "")
+      .trim() || title;
   const deadlines = dates(n["deadline-receipt-tender-date-lot"]).sort();
   const deadline = deadlines.find((d) => d >= today) ?? deadlines[deadlines.length - 1];
   const cpv = tedText(n["classification-cpv"]);
@@ -125,7 +146,7 @@ export function parseTedJson(json: unknown): Assignment[] {
 }
 
 /** En sida ur sök-API:t. */
-export async function tedSearch(page: number, { query = TED_QUERY, fields = TED_FIELDS } = {}) {
+export async function tedSearch(page: number, { query = tedQuery(), fields = TED_FIELDS } = {}) {
   const res = await fetchText(TED_API, {
     method: "POST",
     timeoutMs: 15000,
@@ -148,19 +169,26 @@ export const ted: SourceAdapter = {
   async fetchAssignments() {
     const strategies: string[] = [];
     let fields = TED_FIELDS;
-    let first = await tedSearch(1, { fields });
+    let query = tedQuery();
+    let first = await tedSearch(1, { query, fields });
     if (first.status === 400 && !process.env.TED_FIELDS) {
       // Något fältnamn kan ha bytt namn: försök med de säkraste fälten.
       strategies.push(`fältlistan avvisades (${first.body.slice(0, 200)}), provar kortare`);
       fields = MIN_FIELDS;
-      first = await tedSearch(1, { fields });
+      first = await tedSearch(1, { query, fields });
+    }
+    if (first.status === 400) {
+      // Filtret på sista anbudsdag kan avvisas: filtrera i stället efteråt.
+      strategies.push(`frågan avvisades (${first.body.slice(0, 200)}), provar utan filter på sista dag`);
+      query = tedQuery(new Date(), false);
+      first = await tedSearch(1, { query, fields });
     }
     if (first.status >= 400 || !first.json) throw new Error(`TED:s sök-API svarade ${first.status}: ${first.body.slice(0, 300)}`);
     const total = Number((first.json as Obj).totalNoticeCount ?? 0);
     let all = parseTedJson(first.json);
     const pages = Math.min(MAX_PAGES, Math.ceil(total / PAGE_SIZE));
     for (let p = 2; p <= pages; p++) {
-      const r = await tedSearch(p, { fields });
+      const r = await tedSearch(p, { query, fields });
       if (r.status >= 400) {
         strategies.push(`sida ${p} svarade ${r.status}`);
         break;

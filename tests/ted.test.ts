@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseTedJson, parseTedNotice, tedText, TED_QUERY } from "../src/lib/sources/ted.ts";
+import { parseTedJson, parseTedNotice, tedQuery, tedText, TED_QUERY } from "../src/lib/sources/ted.ts";
 
 // Uppbyggt som svaret från https://api.ted.europa.eu/v3/notices/search (fält per språk).
 const NOTICE = {
@@ -54,4 +54,18 @@ test("standardfrågan gäller svenska köpare och konsult-CPV", () => {
   assert.match(TED_QUERY, /buyer-country IN \(SWE\)/);
   assert.match(TED_QUERY, /72000000/);
   assert.match(TED_QUERY, /79400000/);
+});
+
+test("frågan begränsar till nya annonser med öppen anbudstid", () => {
+  const q = tedQuery(new Date("2026-11-26T12:00:00Z"));
+  assert.match(q, /publication-date>=20260530/);
+  assert.match(q, /deadline-receipt-tender-date-lot>=20261126/);
+  assert.doesNotMatch(tedQuery(new Date("2026-11-26T12:00:00Z"), false), /deadline/);
+});
+
+test("upphandlingens egen rubrik går före annonsens kategorirubrik", () => {
+  const a = parseTedNotice({ ...NOTICE, "title-proc": { swe: "Konsulttjänster inom informationssäkerhet" } }, "2026-11-26")!;
+  assert.equal(a.title, "Konsulttjänster inom informationssäkerhet");
+  const old = parseTedNotice({ ...NOTICE, "notice-title": { swe: "Sverige-Kalmar: Konstnärligt skapande" } }, "2026-11-26")!;
+  assert.equal(old.title, "Konstnärligt skapande");
 });

@@ -295,7 +295,7 @@ med. Bara uppdrag i Sverige tas med (`ASOCIETY_ALL_COUNTRIES=1` visar alla).
 [TED](https://ted.europa.eu/sv/) (Tenders Electronic Daily) är EU:s officiella databas för offentliga
 upphandlingar. Sök-API:t `POST https://api.ted.europa.eu/v3/notices/search` är öppet och kräver ingen nyckel
 för sökning ([dokumentation](https://docs.ted.europa.eu/api/)). Källan hämtar aktiva upphandlingar
-(`scope: ACTIVE`) med svensk köpare och CPV-koder för IT-tjänster (72…) och företags- och
+med svensk köpare, publicerade de senaste 180 dagarna och med sista anbudsdag kvar (`scope: ACTIVE` räcker inte), och CPV-koder för IT-tjänster (72…) och företags- och
 ledningskonsulttjänster (794…), upp till `TED_MAX_PAGES` (5) sidor à 100. Upphandlingar är anbud som ett
 konsultbolag lämnar (ofta ramavtal), inte uppdrag för en enskild konsult, och märks därför
 "Offentlig upphandling"; företaget är den upphandlande organisationen och sista dag gäller anbud.

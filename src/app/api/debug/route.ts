@@ -24,7 +24,7 @@ import { extractAwId, parseAwJob } from "@/lib/sources/academicwork";
 import { parseRpgProject, rpgProjects } from "@/lib/sources/rightpeople";
 import { extractGigstepId, parseGigstepJob } from "@/lib/sources/gigstep";
 import { parseAsocietyPage } from "@/lib/sources/asociety";
-import { parseTedJson, parseTedNotice, TED_FIELDS, TED_QUERY, tedSearch } from "@/lib/sources/ted";
+import { parseTedJson, parseTedNotice, TED_FIELDS, tedQuery, tedSearch } from "@/lib/sources/ted";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -78,7 +78,7 @@ export const dynamic = "force-dynamic";
 /**
  * Felsökning: /api/debug?url=https://www.brainville.com/sv/RequisitionSearch
  *             /api/debug?url=https://api.ted.europa.eu/v3/notices/search (TED, POST-sökning;
- *               &q=… ersätter frågan, &fields=a,b ersätter fälten, &page=2)
+ *               &q=… ersätter frågan, &fields=a,b ersätter fälten, &page=2, &nodeadline=1 utan filter på sista dag)
  *             /api/debug?url=https://cinode.market/requests
  *             /api/debug?url=https://app.verama.com/sv/job-requests&probe=1
  *             /api/debug?url=https://www.keyman.se/sv/uppdrag/
@@ -106,7 +106,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Ogiltig URL" }, { status: 400 });
   }
   if (u.hostname === "api.ted.europa.eu") {
-    const query = params.get("q") ?? TED_QUERY;
+    const query = params.get("q") ?? tedQuery(new Date(), params.get("nodeadline") !== "1");
     const fields = params.get("fields")?.split(",").map((f) => f.trim()).filter(Boolean) ?? TED_FIELDS;
     try {
       const r = await tedSearch(Number(params.get("page") ?? 1), { query, fields });
