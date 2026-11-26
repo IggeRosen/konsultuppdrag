@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseTedJson, parseTedNotice, tedQuery, tedText, TED_QUERY } from "../src/lib/sources/ted.ts";
+import { isTedProduct, parseTedJson, parseTedNotice, tedQuery, tedText, TED_QUERY } from "../src/lib/sources/ted.ts";
 
 // Uppbyggt som svaret från https://api.ted.europa.eu/v3/notices/search (fält per språk).
 const NOTICE = {
@@ -68,4 +68,35 @@ test("upphandlingens egen rubrik går före annonsens kategorirubrik", () => {
   assert.equal(a.title, "Konsulttjänster inom informationssäkerhet");
   const old = parseTedNotice({ ...NOTICE, "notice-title": { swe: "Sverige-Kalmar: Konstnärligt skapande" } }, "2026-11-26")!;
   assert.equal(old.title, "Konstnärligt skapande");
+});
+
+test("köp av system och hårdvara markeras, konsulttjänster och PLM behålls", () => {
+  const cases: [string, string[], boolean][] = [
+    ["Upphandling av upphandlingsverktyg", ["48490000", "72000000"], true],
+    ["Serverhårdvara", ["72000000"], true],
+    ["Verksamhet- och ärendehanteringssystem", ["72000000"], true],
+    ["Rättsdatabaser", ["72000000"], true],
+    ["Ramavtal Licenspartner", ["72000000"], true],
+    ["IT-konsulttjänster", ["72000000"], false],
+    ["IT-konsulttjänster utveckling och förvaltning", ["72000000", "48000000"], false],
+    ["Omvärldsanalys IT", ["72000000"], false],
+    ["Ramavtal bakgrundskontroller och säkerhetsprövningar", ["79400000"], false],
+    ["Förvaltning av ekonomisystem", ["72000000"], false],
+    ["PLM-system för produktdata", ["48000000"], false],
+    ["Licenser Teamcenter", ["48000000"], false],
+    ["Verksamhetssystem Socialförvaltningen", ["72000000"], true],
+    ["Upphandling av spendanalysverktyg", ["72000000"], true],
+    ["AI-baserat system för automatiserad analys av kunddialoger", ["72000000"], true],
+    ["IT-Partner", ["72000000", "48000000"], false],
+    ["Webbpartner", ["72000000", "48000000"], false],
+    ["Systemförvaltning av ekonomisystem", ["72000000"], false],
+    ["Utveckling och förvaltning av externwebb och intranät i Sitevision", ["72000000", "48000000"], false],
+  ];
+  for (const [title, cpv, product] of cases) {
+    const a = parseTedNotice({ ...NOTICE, "title-proc": { swe: title }, "classification-cpv": cpv, "description-proc": undefined }, "2026-11-26")!;
+    assert.equal(isTedProduct(a), product, title);
+  }
+  // Aras i beskrivningen räcker för att behålla ett systemköp.
+  const aras = parseTedNotice({ ...NOTICE, "title-proc": { swe: "Nytt produktdatasystem" }, "description-proc": { swe: "Systemet ska bygga på Aras Innovator." } }, "2026-11-26")!;
+  assert.equal(isTedProduct(aras), false);
 });
