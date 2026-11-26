@@ -24,7 +24,7 @@ import { extractAwId, parseAwJob } from "@/lib/sources/academicwork";
 import { parseRpgProject, rpgProjects } from "@/lib/sources/rightpeople";
 import { extractGigstepId, parseGigstepJob } from "@/lib/sources/gigstep";
 import { parseAsocietyPage } from "@/lib/sources/asociety";
-import { parseTedJson, parseTedNotice, TED_FIELDS, tedQuery, tedSearch } from "@/lib/sources/ted";
+import { isTedProduct, parseTedJson, parseTedNotice, TED_FIELDS, tedQuery, tedSearch } from "@/lib/sources/ted";
 
 // Tillåtna sajter och vilken tolkning som används för dem.
 const SITES = [
@@ -123,7 +123,8 @@ export async function GET(req: Request) {
         parsedCount: parsed.length,
         firstRaw: notices[0],
         firstParsed: notices[0] ? parseTedNotice(notices[0]) : undefined,
-        titles: parsed.slice(0, 15).map((a) => `${a.title} · ${a.company ?? ""} · ${a.deadline ?? ""}`),
+        kept: parsed.filter((a) => !isTedProduct(a)).map((a) => `${a.title} · ${a.company ?? ""} · ${a.deadline ?? ""}`),
+        droppedAsProducts: parsed.filter(isTedProduct).map((a) => `${a.title} · ${a.company ?? ""}`),
         error: r.status >= 400 ? r.body.slice(0, 2000) : undefined,
       });
     } catch (e) {

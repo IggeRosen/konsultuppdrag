@@ -13,6 +13,7 @@ import { isoDate, type Obj } from "./job-json.ts";
 export const TED_API = "https://api.ted.europa.eu/v3/notices/search";
 export const TED_NOTICE = (id: string) => `https://ted.europa.eu/sv/notice/-/detail/${encodeURIComponent(id)}`;
 const MAX_PAGES = Number(process.env.TED_MAX_PAGES ?? 5);
+const ALL_TYPES = process.env.TED_ALL_TYPES === "1";
 const PAGE_SIZE = 100;
 
 /** CPV-koder: IT-tjänster (72…) och företags-/ledningskonsulttjänster (794…). */
@@ -120,6 +121,8 @@ export function parseTedNotice(n: Obj, today = new Date().toISOString().slice(0,
     .filter((x, i, a) => a.indexOf(x) === i)
     .join("\n");
   const buyer = tedText(n["buyer-name"]);
+  const cpvs = [...new Set((Array.isArray(n["classification-cpv"]) ? n["classification-cpv"] : [n["classification-cpv"]]).map((c) => tedText(c)).filter((c): c is string => !!c))];
+  const product = isTedProductPurchase(shortTitle, desc, cpvs);
   return stripEmpty({
     id: `ted:${id}`,
     source: "TED",
@@ -130,13 +133,36 @@ export function parseTedNotice(n: Obj, today = new Date().toISOString().slice(0,
     country: "Sverige",
     published: dates(n["publication-date"])[0],
     deadline,
-    extent: "Offentlig upphandling",
+    extent: product ? "Offentlig upphandling, System/hårdvara" : "Offentlig upphandling",
     description:
       [desc.slice(0, 2400), buyer && `Upphandlande organisation: ${buyer}.`, cpv && `CPV: ${cpv}.`, "Sista dag avser anbud."]
         .filter(Boolean)
         .join("\n") || undefined,
   }) as Assignment;
 }
+
+/** PLM-upphandlingar behålls alltid, även när de gäller system. */
+const KEEP_RE = /\bPLM\b|\bAras\b|Teamcenter|product lifecycle|produktlivscykel/i;
+/** Tjänsteord: upphandlingen gäller konsulter eller tjänster, inte bara en produkt. */
+const SERVICE_RE = /konsult|konsulter|resurs(er|förstärkning)|kompetens|rådgivning|utredning|analys|stöd till|projektled|förvaltning|systemutvecklare|tjänster inom|\butbildning/i;
+/** Rubriker som tyder på köp av system, programvara, licenser eller hårdvara. */
+const PRODUCT_TITLE_RE =
+  /system|plattform|verktyg|programvar|mjukvar|licens|hårdvar|server|databas|lagring|nätverksutrustning|datorer|skrivare|telefoni|e-tjänst(?!er för)|app\b|portal|lösning för|saas|molntjänst/i;
+
+/**
+ * Upphandlingen gäller köp av system/programvara/hårdvara snarare än konsulttjänster:
+ * produktkoder bland CPV (48… programvara, 30… datorer, 32… tele/radio, 31… el-utrustning)
+ * eller en produktrubrik, utan tjänsteord i rubriken. PLM/Aras/Teamcenter behålls alltid.
+ */
+export function isTedProductPurchase(title: string, text: string, cpvs: string[]): boolean {
+  if (KEEP_RE.test(`${title}\n${text}`)) return false;
+  if (SERVICE_RE.test(title)) return false;
+  const productCpv = cpvs.some((c) => /^(48|30|32|31)/.test(c));
+  return productCpv || PRODUCT_TITLE_RE.test(title);
+}
+
+/** Markeras i extent av parseTedNotice. */
+export const isTedProduct = (a: Assignment) => /system\/hårdvara/i.test(a.extent ?? "");
 
 /** Annonserna i ett svar från sök-API:t. */
 export function parseTedJson(json: unknown): Assignment[] {
@@ -198,6 +224,11 @@ export const ted: SourceAdapter = {
     strategies.push(`sök-API: ${total} aktiva upphandlingar, ${all.length} hämtade`);
     const unique = new Map(all.map((a) => [a.id, a]));
     all = [...unique.values()];
+    if (!ALL_TYPES) {
+      const products = all.filter(isTedProduct).length;
+      if (products) strategies.push(`köp av system/hårdvara bortfiltrerade: ${products}`);
+      all = all.filter((a) => !isTedProduct(a));
+    }
     const today = new Date().toISOString().slice(0, 10);
     const expired = all.filter((a) => a.deadline && a.deadline < today).length;
     if (expired) strategies.push(`utgångna bortfiltrerade: ${expired}`);

@@ -299,7 +299,10 @@ med svensk köpare, publicerade de senaste 180 dagarna och med sista anbudsdag k
 ledningskonsulttjänster (794…), upp till `TED_MAX_PAGES` (5) sidor à 100. Upphandlingar är anbud som ett
 konsultbolag lämnar (ofta ramavtal), inte uppdrag för en enskild konsult, och märks därför
 "Offentlig upphandling"; företaget är den upphandlande organisationen och sista dag gäller anbud.
-Upphandlingar under EU:s tröskelvärden publiceras bara i svenska annonsdatabaser (Mercell, e-Avrop m.fl.)
+Upphandlingar av system, programvara, licenser eller hårdvara (produktkoder 48…/30…/31…/32… bland CPV eller
+en produktrubrik som "Ärendehanteringssystem" eller "Serverhårdvara", utan tjänsteord som "konsult" eller
+"förvaltning" i rubriken) sorteras bort, utom när rubrik eller beskrivning nämner PLM, Aras eller Teamcenter;
+`TED_ALL_TYPES=1` visar alla. Upphandlingar under EU:s tröskelvärden publiceras bara i svenska annonsdatabaser (Mercell, e-Avrop m.fl.)
 och kommer inte med. Frågan kan ändras med `TED_QUERY` (TED:s expertsyntax) och fälten med `TED_FIELDS`
 (kommaseparerade). `/api/debug?url=https://api.ted.europa.eu/v3/notices/search` kör sökningen och visar svaret;
 `&q=` byter fråga, `&fields=` byter fält och `&page=` väljer sida.
@@ -338,7 +341,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`, `ADADIGITAL_MAX_DETAILS`, `NEXER_ALL_COUNTRIES`, `WISE_MAX_PAGES`, `WISE_MAX_DETAILS`, `EXPERIS_MAX_DETAILS`, `EXPERIS_ALL_TYPES`, `ACADEMICWORK_MAX_DETAILS`, `ACADEMICWORK_ALL_TYPES`, `RIGHTPEOPLE_ALL_COUNTRIES`, `GIGSTEP_MAX_DETAILS`, `GIGSTEP_ALL_TYPES`, `ASOCIETY_ALL_COUNTRIES`, `TED_QUERY`, `TED_FIELDS`, `TED_MAX_PAGES`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`, `ADADIGITAL_MAX_DETAILS`, `NEXER_ALL_COUNTRIES`, `WISE_MAX_PAGES`, `WISE_MAX_DETAILS`, `EXPERIS_MAX_DETAILS`, `EXPERIS_ALL_TYPES`, `ACADEMICWORK_MAX_DETAILS`, `ACADEMICWORK_ALL_TYPES`, `RIGHTPEOPLE_ALL_COUNTRIES`, `GIGSTEP_MAX_DETAILS`, `GIGSTEP_ALL_TYPES`, `ASOCIETY_ALL_COUNTRIES`, `TED_QUERY`, `TED_FIELDS`, `TED_MAX_PAGES`, `TED_ALL_TYPES`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida
