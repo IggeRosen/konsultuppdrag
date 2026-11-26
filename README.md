@@ -1,7 +1,7 @@
 # Uppdragsradarn
 
 En webbapp som samlar publicerade konsultuppdrag från uppdragsportaler och
-filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb**, **Kvadrat**, **ADA Digital**, **Nexer**, **Wise**, **Experis**, **Academic Work**, **Right People Group**, **Gigstep**, **A Society** och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
+filtrerar dem på dina nyckelord. Källor just nu: **Brainville**, **Cinode Market**, **Ework** (via Verama), **KeyMan**, **Magnit** (Magnit Source), **emagine**, **ITJobb**, **Kvadrat**, **ADA Digital**, **Nexer**, **Wise**, **Experis**, **Academic Work**, **Right People Group**, **Gigstep**, **A Society**, **TED** (EU:s offentliga upphandlingar) och, vid nyckelordssökning, Arbetsförmedlingens **Platsbanken**.
 
 ## Funktioner
 
@@ -61,6 +61,7 @@ src/lib/sources/academicwork.ts       Academic Work (sitemap + annonssidornas te
 src/lib/sources/rightpeople.ts        Right People Group (__NEXT_DATA__ på listsidan, Sverige + remote)
 src/lib/sources/gigstep.ts            Gigstep (Teamtailor: sitemap + JSON-LD, utan rena rekryteringar)
 src/lib/sources/asociety.ts           A Society (RSC-data på uppdragslistan, bara Sverige)
+src/lib/sources/ted.ts                TED (EU:s öppna sök-API för upphandlingar, svenska köpare)
 src/lib/duplicates.ts                dubblettanalys (säkra och misstänkta dubbletter)
 src/components/Duplicates.tsx        dubblettvyn (nyckeltal, diagram, värmekarta, grupper)
 src/lib/sources/platsbanken.ts       Platsbanken via Arbetsförmedlingens JobSearch-API (bara vid nyckelordssökning)
@@ -289,6 +290,20 @@ Annonslänken byggs som `/sv/uppdrag/<slug>-<abstract_id>`. Kontaktpersonens nam
 med. Bara uppdrag i Sverige tas med (`ASOCIETY_ALL_COUNTRIES=1` visar alla).
 `/api/debug?url=https://www.asocietygroup.com/sv/uppdrag` visar tolkningen.
 
+### TED (offentliga upphandlingar)
+
+[TED](https://ted.europa.eu/sv/) (Tenders Electronic Daily) är EU:s officiella databas för offentliga
+upphandlingar. Sök-API:t `POST https://api.ted.europa.eu/v3/notices/search` är öppet och kräver ingen nyckel
+för sökning ([dokumentation](https://docs.ted.europa.eu/api/)). Källan hämtar aktiva upphandlingar
+(`scope: ACTIVE`) med svensk köpare och CPV-koder för IT-tjänster (72…) och företags- och
+ledningskonsulttjänster (794…), upp till `TED_MAX_PAGES` (5) sidor à 100. Upphandlingar är anbud som ett
+konsultbolag lämnar (ofta ramavtal), inte uppdrag för en enskild konsult, och märks därför
+"Offentlig upphandling"; företaget är den upphandlande organisationen och sista dag gäller anbud.
+Upphandlingar under EU:s tröskelvärden publiceras bara i svenska annonsdatabaser (Mercell, e-Avrop m.fl.)
+och kommer inte med. Frågan kan ändras med `TED_QUERY` (TED:s expertsyntax) och fälten med `TED_FIELDS`
+(kommaseparerade). `/api/debug?url=https://api.ted.europa.eu/v3/notices/search` kör sökningen och visar svaret;
+`&q=` byter fråga, `&fields=` byter fält och `&page=` väljer sida.
+
 ### Platsbanken (Arbetsförmedlingen)
 
 Platsbanken hämtas via Arbetsförmedlingens öppna JobSearch-API (JobTech Dev):
@@ -323,7 +338,7 @@ npm run build
 ## Publicera på Vercel
 
 1. Importera repot på vercel.com → *Add New Project* (ramverket känns igen som Next.js).
-2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`, `ADADIGITAL_MAX_DETAILS`, `NEXER_ALL_COUNTRIES`, `WISE_MAX_PAGES`, `WISE_MAX_DETAILS`, `EXPERIS_MAX_DETAILS`, `EXPERIS_ALL_TYPES`, `ACADEMICWORK_MAX_DETAILS`, `ACADEMICWORK_ALL_TYPES`, `RIGHTPEOPLE_ALL_COUNTRIES`, `GIGSTEP_MAX_DETAILS`, `GIGSTEP_ALL_TYPES`, `ASOCIETY_ALL_COUNTRIES`.
+2. Ingen konfiguration krävs. Valfria miljövariabler: `BRAINVILLE_COMPANY_IDS`, `BRAINVILLE_MAX_PAGES`, `BRAINVILLE_MAX_DETAILS`, `BRAINVILLE_MAX_KEYWORDS`, `BRAINVILLE_KEYWORD_PAGES`, `CINODE_LOAD_MORE_URL`, `CINODE_MAX_PAGES`, `CINODE_MAX_SITEMAP`, `CINODE_MAX_DETAILS`, `EWORK_API_URL`, `EWORK_MAX_PAGES`, `EWORK_MAX_SITEMAP`, `EWORK_MAX_DETAILS`, `KEYMAN_MAX_PAGES`, `KEYMAN_MAX_SITEMAP`, `KEYMAN_MAX_DETAILS`, `MAGNIT_GATEWAY_URL`, `MAGNIT_ALL_COUNTRIES`, `MAGNIT_PAGE_SIZE`, `MAGNIT_MAX_PAGES`, `MAGNIT_MAX_DETAILS`, `EMAGINE_API_URL`, `EMAGINE_SEARCH_BODY`, `EMAGINE_ALL_COUNTRIES`, `EMAGINE_MAX_PAGES`, `EMAGINE_MAX_SITEMAP`, `EMAGINE_MAX_DETAILS`, `PLATSBANKEN_MAX_KEYWORDS`, `PLATSBANKEN_PER_KEYWORD`, `JOBTECH_API_URL`, `JOBTECH_API_KEY`, `ITJOBB_MAX_DETAILS`, `KVADRAT_MAX_PAGES`, `ADADIGITAL_MAX_DETAILS`, `NEXER_ALL_COUNTRIES`, `WISE_MAX_PAGES`, `WISE_MAX_DETAILS`, `EXPERIS_MAX_DETAILS`, `EXPERIS_ALL_TYPES`, `ACADEMICWORK_MAX_DETAILS`, `ACADEMICWORK_ALL_TYPES`, `RIGHTPEOPLE_ALL_COUNTRIES`, `GIGSTEP_MAX_DETAILS`, `GIGSTEP_ALL_TYPES`, `ASOCIETY_ALL_COUNTRIES`, `TED_QUERY`, `TED_FIELDS`, `TED_MAX_PAGES`.
 3. Sätt er domän under *Settings → Domains*.
 
 Efter första deployen: öppna `/api/debug` för att se hur Brainvilles söksida
